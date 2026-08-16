@@ -41,6 +41,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox Grid.Column="1"
@@ -67,6 +68,15 @@
                            HorizontalAlignment="Right"
                            Margin="0,0,10,0" />
                 <Button Grid.Column="6"
+                        Content="App update"
+                        Height="26"
+                        MinWidth="96"
+                        Margin="0,0,8,0"
+                        Command="{Binding OpenAppUpdateCommand}"
+                        ToolTip="{Binding AppUpdateSummary}"
+                        Visibility="{Binding AppUpdateAvailable, Converter={StaticResource BoolToVis}}"
+                        Style="{DynamicResource AccentButton}" />
+                <Button Grid.Column="7"
                         Content="Settings"
                         Width="80"
                         Height="26"

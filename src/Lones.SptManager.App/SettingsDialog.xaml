@@ -56,10 +56,22 @@
                     HorizontalAlignment="Left"
                     Command="{Binding RepairCommand}" />
             <TextBlock TextWrapping="Wrap"
-                       Margin="0,6,0,0"
+                       Margin="0,6,0,16"
                        FontSize="11"
                        Foreground="{DynamicResource MutedBrush}"
                        Text="Fixes a stuck or half-applied deploy. The SPT install stays." />
+
+            <TextBlock Text="About" FontWeight="SemiBold" Margin="0,0,0,8" />
+            <TextBlock Text="{Binding AppVersionLabel}" Margin="0,0,0,8" />
+            <Button Content="Check for updates"
+                    Height="30"
+                    HorizontalAlignment="Left"
+                    Command="{Binding CheckAppUpdateCommand}" />
+            <TextBlock TextWrapping="Wrap"
+                       Margin="0,6,0,0"
+                       FontSize="11"
+                       Foreground="{DynamicResource MutedBrush}"
+                       Text="{Binding AppUpdateStatus}" />
         </StackPanel>
     </DockPanel>
 </Window>

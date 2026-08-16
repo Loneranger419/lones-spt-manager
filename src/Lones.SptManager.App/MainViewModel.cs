@@ -1,9 +1,12 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Windows.Data;
 using System.Windows.Input;
+using Lones.SptManager.Core;
 using Lones.SptManager.Core.Deploy;
 using Lones.SptManager.Core.Instance;
 using Lones.SptManager.Core.Inventory;
@@ -11,6 +14,7 @@ using Lones.SptManager.Core.Launch;
 using Lones.SptManager.Core.Mapping;
 using Lones.SptManager.Core.Profiles;
 using Lones.SptManager.Core.Store;
+using Lones.SptManager.Core.Update;
 using Lones.SptManager.Forge;
 
 namespace Lones.SptManager.App;
@@ -35,6 +39,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _packUpdateAvailable;
     private string _packUpdateSummary = string.Empty;
     private CancellationTokenSource? _packCheckCts;
+    private bool _appUpdateAvailable;
+    private string _appUpdateSummary = string.Empty;
+    private string _appUpdateStatus = "On launch the app checks GitHub Releases. Click Check to run that again. Updates are not installed automatically.";
+    private string? _appUpdateUrl;
+    private CancellationTokenSource? _appCheckCts;
+    private bool _checkingAppUpdate;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -71,6 +81,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         PurgeCommand = new RelayCommand(Purge, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
         SettingsCommand = new RelayCommand(OpenSettings, () => !_busy);
         OpenPackUpdateCommand = new RelayCommand(EditProfile, () => !_busy && PackUpdateAvailable);
+        OpenAppUpdateCommand = new RelayCommand(OpenAppUpdate, () => AppUpdateAvailable);
+        CheckAppUpdateCommand = new RelayCommand(CheckAppUpdateNow, () => !IsCheckingAppUpdate);
         CollectionViewSource.GetDefaultView(InventoryItems).Filter = MatchesModFilter;
         RestoreLastInstance();
         RestoreLastProfile();
@@ -78,6 +90,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         LoadProfileLaunchSettings();
         RefreshInventory();
         QueuePackUpdateCheck();
+        QueueAppUpdateCheck();
     }
 
     public string GameRoot
@@ -206,6 +219,44 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => Set(ref _packUpdateSummary, value);
     }
 
+    public string AppVersionLabel => ProductInfo.Name + " " + ProductInfo.Version;
+
+    public bool AppUpdateAvailable
+    {
+        get => _appUpdateAvailable;
+        private set
+        {
+            if (Set(ref _appUpdateAvailable, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public string AppUpdateSummary
+    {
+        get => _appUpdateSummary;
+        private set => Set(ref _appUpdateSummary, value);
+    }
+
+    public string AppUpdateStatus
+    {
+        get => _appUpdateStatus;
+        private set => Set(ref _appUpdateStatus, value);
+    }
+
+    public bool IsCheckingAppUpdate
+    {
+        get => _checkingAppUpdate;
+        private set
+        {
+            if (Set(ref _checkingAppUpdate, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
     public ObservableCollection<string> ProfileIds { get; } = [];
 
     public ObservableCollection<ModRowViewModel> InventoryItems { get; } = [];
@@ -286,6 +337,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ICommand SettingsCommand { get; }
     public ICommand OpenPackUpdateCommand { get; }
+    public ICommand OpenAppUpdateCommand { get; }
+    public ICommand CheckAppUpdateCommand { get; }
 
     public void RepairOnStart()
     {
@@ -764,6 +817,110 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 PackUpdateAvailable = false;
                 PackUpdateSummary = string.Empty;
             }
+        }
+    }
+
+    private void QueueAppUpdateCheck()
+    {
+        _appCheckCts?.Cancel();
+        _appCheckCts?.Dispose();
+        _appCheckCts = new CancellationTokenSource();
+        _ = CheckAppUpdatesAsync(notifyWhenCurrent: false, _appCheckCts.Token);
+    }
+
+    private void CheckAppUpdateNow()
+        => _ = CheckAppUpdatesAsync(notifyWhenCurrent: true, CancellationToken.None);
+
+    private async Task CheckAppUpdatesAsync(bool notifyWhenCurrent, CancellationToken cancellationToken)
+    {
+        if (IsCheckingAppUpdate)
+        {
+            return;
+        }
+
+        IsCheckingAppUpdate = true;
+        if (notifyWhenCurrent)
+        {
+            AppUpdateStatus = "Checking GitHub…";
+        }
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            var result = await AppUpdateCheck.CheckLatestAsync(http, cancellationToken: cancellationToken)
+                .ConfigureAwait(true);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            ApplyAppUpdate(result, notifyWhenCurrent);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                ApplyAppUpdate(AppUpdateCheckResult.Unavailable, notifyWhenCurrent);
+            }
+        }
+        finally
+        {
+            IsCheckingAppUpdate = false;
+        }
+    }
+
+    private void ApplyAppUpdate(AppUpdateCheckResult result, bool notifyWhenCurrent)
+    {
+        var info = result.Update;
+        AppUpdateAvailable = result.Status == AppUpdateCheckStatus.UpdateAvailable && info is not null;
+        AppUpdateSummary = info?.Summary ?? string.Empty;
+        _appUpdateUrl = info?.ReleaseUrl;
+        if (AppUpdateAvailable)
+        {
+            AppUpdateStatus = info!.Summary + " Open the GitHub Release to download the zip.";
+            return;
+        }
+
+        if (!notifyWhenCurrent)
+        {
+            return;
+        }
+
+        AppUpdateStatus = result.Status == AppUpdateCheckStatus.Current
+            ? "You already have the latest GitHub Release (" + ProductInfo.Version + ")."
+            : "Could not reach GitHub. Try again later, or open " + ProductInfo.ReleasesUrl + ".";
+    }
+
+    private void OpenAppUpdate()
+    {
+        var url = string.IsNullOrWhiteSpace(_appUpdateUrl) ? ProductInfo.ReleasesUrl : _appUpdateUrl;
+        var confirm = System.Windows.MessageBox.Show(
+            (string.IsNullOrWhiteSpace(AppUpdateSummary) ? "A newer build is on GitHub." : AppUpdateSummary)
+            + Environment.NewLine
+            + Environment.NewLine
+            + "Open the download page? This app does not install the update itself.",
+            ProductInfo.Name,
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Information);
+        if (confirm != System.Windows.MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Status = "Could not open the release page: " + ex.Message;
         }
     }
 
