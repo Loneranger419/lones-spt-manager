@@ -179,7 +179,7 @@ public sealed class InstallMapperTests
                 progress: new SyncProgress<string>(seen.Add));
             Assert.NotNull(result.Document);
             Assert.Contains(seen, line => line.StartsWith("Reading archive listing", StringComparison.Ordinal));
-            Assert.Contains(seen, line => line.Contains("Extracting", StringComparison.Ordinal));
+            Assert.Contains(seen, line => line.Contains("Unpacking", StringComparison.Ordinal) || line.Contains("Hashing", StringComparison.Ordinal));
         }
         finally
         {
