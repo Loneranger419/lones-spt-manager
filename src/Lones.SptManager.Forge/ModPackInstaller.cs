@@ -56,9 +56,8 @@ public sealed class ModPackInstaller : IDisposable
         IProgress<ModPackProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var resolved = ModPackSource.Normalize(source);
         Report(progress, "Reading pack…", 0, 0);
-        var json = await ReadJsonAsync(resolved, cancellationToken).ConfigureAwait(false);
+        var json = await ModPackSource.ReadJsonAsync(source, _packHttp, cancellationToken).ConfigureAwait(false);
         var listed = ModPackManifest.Parse(json).ListedMods();
         if (listed.Count == 0)
         {
@@ -67,6 +66,7 @@ public sealed class ModPackInstaller : IDisposable
 
         var store = ModStore.List(managerData);
         var order = new List<(string ModKey, string Version)>();
+        var packForgeIds = new HashSet<int>();
         var warnings = new List<string>();
         var installed = 0;
         var reused = 0;
@@ -96,6 +96,12 @@ public sealed class ModPackInstaller : IDisposable
                     if (existing is not null)
                     {
                         order.Add((existing.ModKey, existing.Version));
+                        if (existing.ForgeModId is int reusedId)
+                        {
+                            packForgeIds.Add(reusedId);
+                        }
+
+                        packForgeIds.Add(entry.Id);
                         reused++;
                         continue;
                     }
@@ -131,6 +137,12 @@ public sealed class ModPackInstaller : IDisposable
                     }
 
                     order.Add((document.ModKey, document.Version));
+                    if (document.ForgeModId is int installedId)
+                    {
+                        packForgeIds.Add(installedId);
+                    }
+
+                    packForgeIds.Add(entry.Id);
                     installed++;
                     store = ModStore.List(managerData);
                     Report(progress, $"Pack {i + 1}/{listed.Count}: {label}", i + 1, listed.Count);
@@ -158,11 +170,12 @@ public sealed class ModPackInstaller : IDisposable
             warnings.Add("Pack install cancelled.");
         }
 
-        InstallInventory.ReplaceLoadOrder(managerData, profileId, order);
+        var extras = InstallInventory.ApplyPackLoadOrder(managerData, profileId, order, packForgeIds.ToArray());
         var ok = order.Count > 0;
         var omittedText = omitted > 0 ? $", omitted {omitted}" : "";
+        var extraText = extras > 0 ? $", kept {extras} manual" : "";
         var message = ok
-            ? $"Pack installed {installed}, reused {reused}{omittedText}, failed {failed} of {listed.Count}. Load order follows the JSON list."
+            ? $"Pack installed {installed}, reused {reused}{omittedText}{extraText}, failed {failed} of {listed.Count}. Load order follows the JSON list, then manual mods."
             : $"Pack installed nothing ({failed} failed, {omitted} omitted of {listed.Count}).";
         return new ModPackInstallResult
         {
@@ -246,53 +259,6 @@ public sealed class ModPackInstaller : IDisposable
             Total = total,
             LogLine = logLine
         });
-
-    private async Task<string> ReadJsonAsync(string source, CancellationToken cancellationToken)
-    {
-        if (!ModPackSource.IsHttpsUrl(source))
-        {
-            var info = new FileInfo(source);
-            if (info.Length > ModPackSource.MaxJsonBytes)
-            {
-                throw new InvalidOperationException("Pack JSON is larger than 2 MB.");
-            }
-
-            return await File.ReadAllTextAsync(source, cancellationToken).ConfigureAwait(false);
-        }
-
-        using var response = await _packHttp.GetAsync(source, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-            .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        if (response.Content.Headers.ContentLength is > ModPackSource.MaxJsonBytes)
-        {
-            throw new InvalidOperationException("Pack JSON is larger than 2 MB.");
-        }
-
-        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var limited = new MemoryStream();
-        var buffer = new byte[8192];
-        var total = 0;
-        while (true)
-        {
-            var read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (read == 0)
-            {
-                break;
-            }
-
-            total += read;
-            if (total > ModPackSource.MaxJsonBytes)
-            {
-                throw new InvalidOperationException("Pack JSON is larger than 2 MB.");
-            }
-
-            limited.Write(buffer, 0, read);
-        }
-
-        limited.Position = 0;
-        using var reader = new StreamReader(limited);
-        return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-    }
 
     private static ModDocument? FindInStore(IReadOnlyList<ModDocument> store, int forgeModId, string? version)
     {

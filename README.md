@@ -55,16 +55,15 @@ After a purge, **Bind** again if you still want to use the manager.
 
 1. Pick a **profile** at the top. Switching deploys that profile onto the game.
 2. Enable or disable mods on the left list. Drag to change **load order** (0 at the top loads first; later rows win when files overlap).
-3. **Deploy** if you changed mods and are not about to Launch (Launch deploys first).
-4. **Launch**. The window stays busy until that session’s server and/or client have quit.
-5. **Harvest** after you quit so new configs and leftover files come back into the profile.
+3. **Deploy** (under the installed list) if you changed mods and are not about to launch.
+4. **Solo**, **Fika host**, or **Fika join**. The window stays busy until that session’s server and/or client have quit, then **Harvest** runs on its own.
+5. Use **Harvest** on the installed list if you played without launching from this app.
 
 The window blurs with a spinner during profile switch, Deploy, Harvest, and Launch. Wait it out.
 
 ### Install mods
 
-- **The Forge** tab — search, select, **Install**. **Updates** checks what you already have.
-- **Import zip** — drop in a `.zip` / `.7z` you already downloaded.
+- **The Forge** tab — search, select, **Install**. **Updates** checks what you already have. **Import zip** takes a `.zip` / `.7z` you already downloaded.
 - **Add profile → Install from pack** — HTTPS link or a local `mods.json`. List order is load order (0 first). Each entry needs a Forge `id` and `installedVersion`. Failed mods are skipped. Edit the profile later and **Update** to reinstall that pack.
 
 A pack can copy from another profile **or** install from JSON, not both in one go.
@@ -75,11 +74,13 @@ A pack can copy from another profile **or** install from JSON, not both in one g
 
 **Edit** can rename, copy, delete (not the last profile), or **Update** a saved pack link.
 
+When a profile has a pack link, loading it checks that `mods.json` for newer versions or new mods. A **Pack update** button appears next to Edit if something changed. It does not install anything until you click **Edit → Update**. Mods you added yourself stay on the profile; a pack update only takes them over if that pack starts listing them.
+
 The last profile you used is selected again next time.
 
 ### Overwrite
 
-After Harvest, extra files land on the **Overwrite** tab. Configs that belong to a mod are attached to that mod for this profile — including F12 BepInEx `.cfg` files matched by plugin folder or DLL name when the Forge GUID is missing. Greyer rows are generated/state files that stay in Overwrite. You can **Assign to mod**, **Discard file**, or **Discard all Overwrite**.
+After Harvest, extra files land on the **Overwrite** tab. Configs that belong to a mod are attached to that mod for this profile — including F12 BepInEx `.cfg` files matched by plugin folder or DLL name when the Forge GUID is missing. Greyer rows are generated/state files that stay in Overwrite. **Assign to mod** pins a leftover onto the selected installed mod for this profile (same as Harvest; it does not create a second store entry). You can also **Discard file** or **Discard all Overwrite**.
 
 ### Already-modded install
 
@@ -87,8 +88,8 @@ If SPT already has real folders in `BepInEx\plugins` or `SPT_Runtime\user\mods`,
 
 ### Other buttons
 
-- **Settings** — theme (follow Windows, Dark, or Light), manager data folder, and **Purge manager data**.
-- **Repair** — fix a stuck or half-applied deploy.
+- **Settings** — theme (follow Windows, Dark, or Light), manager data folder, **Purge manager data**, and **Repair** (stuck or half-applied deploy).
+- **Bind** — next to the game root. Point the manager at this SPT install.
 
 ---
 
@@ -96,13 +97,13 @@ If SPT already has real folders in `BepInEx\plugins` or `SPT_Runtime\user\mods`,
 
 Install the Fika **client** and **server** mods on the profile the same way as any other Forge mods. Everyone in the group needs the Fika client plugin.
 
-| Mode | What it starts | When to use |
+| Button | What it starts | When to use |
 | --- | --- | --- |
-| `solo` | SPT server, then the SPT launcher | Normal single-player |
-| `fika-host` | SPT server, then the SPT launcher | You are hosting |
-| `fika-client` | SPT launcher only | You are joining someone else |
+| **Solo** | SPT server, then the SPT launcher | Normal single-player |
+| **Fika host** | SPT server, then the SPT launcher | You are hosting |
+| **Fika join** | SPT launcher only | You are joining someone else |
 
-For **fika-client**, put the host URL in **Join URL** (example: `https://their-pc:6969`). The manager writes that into the launcher config and leaves the other keys alone.
+For **Fika join**, put the host URL in **Join URL** (example: `https://their-pc:6969`). The manager writes that into the launcher config and leaves the other keys alone.
 
 This app never starts `EscapeFromTarkov.exe` or BattlEye. You click Play in the SPT launcher like usual.
 
@@ -117,10 +118,10 @@ No. Keep the exe outside the game. Bind the game root from inside the app.
 No. Pick one manager for an install.
 
 **Where did my F12 / mod settings go?**
-Quit the game, then **Harvest**. Settings that belong to a mod stay with that mod on this profile.
+Quit the game. If you launched from this app, Harvest runs when SPT quits. Otherwise click **Harvest** under the installed list. Settings that belong to a mod stay with that mod on this profile.
 
 **I changed mods but the game looks the same.**
-**Deploy** (or Launch, which deploys first). Make sure the checkboxes on the left are what you want. An empty enabled list means everything is off.
+**Deploy** before you play if you changed mods. Make sure the checkboxes on the left are what you want. An empty enabled list means everything is off.
 
 **A Forge / pack install failed.**
 Read the Log tab. Other mods still install. Try again, or install that one from **The Forge** tab.
@@ -135,7 +136,7 @@ No. It only removes this manager’s data. Bind again afterward.
 Windows only.
 
 **How do I switch dark mode?**
-**Settings** (top right). Theme can follow Windows, or stay Dark / Light. The manager data folder and **Purge manager data** are in the same window. Unchecked mods in the list are greyed out.
+**Settings** (top right). Theme can follow Windows, or stay Dark / Light. The manager data folder, **Purge manager data**, and **Repair** are in the same window. Unchecked mods in the list are greyed out.
 
 ---
 

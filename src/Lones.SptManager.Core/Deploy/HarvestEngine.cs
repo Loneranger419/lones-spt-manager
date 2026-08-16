@@ -39,8 +39,8 @@ public sealed class HarvestResult
 
 public sealed class AssignOverwriteResult
 {
-    public required ModDocument Document { get; init; }
-    public required string PreviousVersion { get; init; }
+    public required string ModKey { get; init; }
+    public required int AssignedCount { get; init; }
 }
 
 public sealed class HarvestEngine
@@ -242,8 +242,8 @@ public sealed class HarvestEngine
     }
 
     /// <summary>
-    /// Copy selected Overwrite files into a <b>new</b> store version of an existing package.
-    /// Never mutates the hashed original.
+    /// Attach selected Overwrite files to an existing store package as per-profile generated files.
+    /// Never mutates the hashed original and does not create a new store version.
     /// </summary>
     public static AssignOverwriteResult AssignToMod(
         string managerData,
@@ -260,24 +260,18 @@ public sealed class HarvestEngine
             throw new InvalidOperationException("Select at least one Overwrite file to assign.");
         }
 
-        var source = ModStore.TryRead(managerData, modKey, version)
-                     ?? throw new InvalidOperationException($"Store package missing: {modKey} {version}");
-        var overwriteRoot = ProfilePaths.Overwrite(managerData, profileId);
-        var newVersion = "ow-" + DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
-        var destFiles = ModStore.FilesDirectory(managerData, source.ModKey, newVersion);
-        Directory.CreateDirectory(destFiles);
-
-        var oldFiles = ModStore.FilesDirectory(managerData, source.ModKey, source.Version);
-        if (Directory.Exists(oldFiles))
+        _ = ModStore.TryRead(managerData, modKey, version)
+            ?? throw new InvalidOperationException($"Store package missing: {modKey} {version}");
+        if (!ModStore.List(managerData).Any(document =>
+                document.Deployable
+                && document.ModKey.Equals(modKey, StringComparison.OrdinalIgnoreCase)
+                && !HarvestRules.IsRuntimeVersion(document.Version)))
         {
-            IsolatedOverlay.CopyDirectoryNoFollow(oldFiles, destFiles, skipExisting: false);
+            throw new InvalidOperationException("Store package is not deployable: " + modKey);
         }
 
-        var records = source.Files.ToDictionary(
-            file => GamePath.Normalize(file.CanonicalPath),
-            file => file,
-            StringComparer.OrdinalIgnoreCase);
-
+        var overwriteRoot = ProfilePaths.Overwrite(managerData, profileId);
+        var assigned = 0;
         foreach (var raw in overwriteCanonicals)
         {
             var canonical = OverlayPlanner.WrapPluginCanonical(raw);
@@ -287,40 +281,21 @@ public sealed class HarvestEngine
                 throw new FileNotFoundException("Overwrite file missing: " + raw, from);
             }
 
-            var dest = GamePath.Combine(destFiles, canonical);
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            File.Copy(from, dest, overwrite: true);
-            records[canonical] = new ModFileRecord
+            if (!TryAssignOwnedFile(managerData, profileId, modKey, canonical, from, HashFile(from)))
             {
-                CanonicalPath = canonical,
-                Sha256 = HashFile(dest)
-            };
-            File.Delete(from);
+                throw new InvalidOperationException("Could not attach Overwrite file to " + modKey + ": " + raw);
+            }
+
+            if (File.Exists(from))
+            {
+                File.Delete(from);
+            }
+
+            assigned++;
         }
 
         PruneEmptyDirectories(overwriteRoot);
-
-        var document = new ModDocument
-        {
-            ModKey = source.ModKey,
-            DisplayName = source.DisplayName,
-            Version = newVersion,
-            Kind = source.Kind,
-            Deployable = source.Deployable,
-            ForgeModId = source.ForgeModId,
-            ForgeGuid = source.ForgeGuid,
-            ThumbnailUrl = source.ThumbnailUrl,
-            WrapperFolder = source.WrapperFolder,
-            Warnings = source.Warnings.Concat(["Assigned from overwrite"]).ToArray(),
-            Files = records.Values.OrderBy(file => file.CanonicalPath, StringComparer.OrdinalIgnoreCase).ToArray(),
-            ImportedAtUtc = DateTimeOffset.UtcNow
-        };
-        Directory.CreateDirectory(ModStore.PackageDirectory(managerData, document.ModKey, document.Version));
-        File.WriteAllText(
-            Path.Combine(ModStore.PackageDirectory(managerData, document.ModKey, document.Version), "mod.json"),
-            JsonSerializer.Serialize(document, ProfileStore.JsonOptions));
-
-        return new AssignOverwriteResult { Document = document, PreviousVersion = source.Version };
+        return new AssignOverwriteResult { ModKey = modKey, AssignedCount = assigned };
     }
 
     private static string SummarizeHarvest(int overwriteCount, int assignedCount)

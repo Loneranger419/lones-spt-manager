@@ -32,6 +32,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _busy;
     private bool _refreshingProfiles;
     private bool _hydratingThumbnails;
+    private bool _packUpdateAvailable;
+    private string _packUpdateSummary = string.Empty;
+    private CancellationTokenSource? _packCheckCts;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -48,7 +51,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SearchForgeCommand = new RelayCommand(SearchForge, () => !_busy && !string.IsNullOrWhiteSpace(ForgeQuery));
         InstallForgeCommand = new RelayCommand(InstallForge, () => !_busy && SelectedForgeHit is not null && !string.IsNullOrWhiteSpace(ManagerData));
         CheckUpdatesCommand = new RelayCommand(CheckUpdates, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
-        LaunchCommand = new RelayCommand(Launch, () => !_busy && !string.IsNullOrWhiteSpace(GameRoot));
+        var canLaunch = () => !_busy && !string.IsNullOrWhiteSpace(GameRoot);
+        LaunchSoloCommand = new RelayCommand(() => Launch(LaunchModes.Solo), canLaunch);
+        LaunchFikaHostCommand = new RelayCommand(() => Launch(LaunchModes.FikaHost), canLaunch);
+        LaunchFikaJoinCommand = new RelayCommand(() => Launch(LaunchModes.FikaClient), canLaunch);
         EnableModCommand = new RelayCommand(() => ToggleSelected(true), () => !_busy && SelectedInventoryItem is { Kind: InstallInventory.StoreKind });
         DisableModCommand = new RelayCommand(() => ToggleSelected(false), () => !_busy && SelectedInventoryItem is { Kind: InstallInventory.StoreKind, Enabled: true });
         PriorityUpCommand = new RelayCommand(() => MoveSelected(-1), () => !_busy && SelectedInventoryItem is { Kind: InstallInventory.StoreKind });
@@ -64,12 +70,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         BrowseManagerDataCommand = new RelayCommand(BrowseManagerData);
         PurgeCommand = new RelayCommand(Purge, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
         SettingsCommand = new RelayCommand(OpenSettings, () => !_busy);
+        OpenPackUpdateCommand = new RelayCommand(EditProfile, () => !_busy && PackUpdateAvailable);
         CollectionViewSource.GetDefaultView(InventoryItems).Filter = MatchesModFilter;
         RestoreLastInstance();
         RestoreLastProfile();
         RefreshProfiles();
         LoadProfileLaunchSettings();
         RefreshInventory();
+        QueuePackUpdateCheck();
     }
 
     public string GameRoot
@@ -116,6 +124,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ProfileStore.RememberLastProfile(ManagerData, _profileId);
             LoadProfileLaunchSettings();
             RefreshInventory();
+            QueuePackUpdateCheck();
             _ = ApplySelectedProfileAsync();
         }
     }
@@ -179,7 +188,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => Set(ref _joinUrl, value);
     }
 
-    public IReadOnlyList<string> LaunchModeChoices { get; } = [LaunchModes.Solo, LaunchModes.FikaHost, LaunchModes.FikaClient];
+    public bool PackUpdateAvailable
+    {
+        get => _packUpdateAvailable;
+        private set
+        {
+            if (Set(ref _packUpdateAvailable, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public string PackUpdateSummary
+    {
+        get => _packUpdateSummary;
+        private set => Set(ref _packUpdateSummary, value);
+    }
 
     public ObservableCollection<string> ProfileIds { get; } = [];
 
@@ -244,7 +269,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand SearchForgeCommand { get; }
     public ICommand InstallForgeCommand { get; }
     public ICommand CheckUpdatesCommand { get; }
-    public ICommand LaunchCommand { get; }
+    public ICommand LaunchSoloCommand { get; }
+    public ICommand LaunchFikaHostCommand { get; }
+    public ICommand LaunchFikaJoinCommand { get; }
     public ICommand EnableModCommand { get; }
     public ICommand DisableModCommand { get; }
     public ICommand PriorityUpCommand { get; }
@@ -258,6 +285,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand PurgeCommand { get; }
 
     public ICommand SettingsCommand { get; }
+    public ICommand OpenPackUpdateCommand { get; }
 
     public void RepairOnStart()
     {
@@ -522,16 +550,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private async void Harvest()
         => await HarvestAsync().ConfigureAwait(true);
 
-    private async Task HarvestAsync()
+    private async Task HarvestAsync(bool alreadyBusy = false)
     {
-        if (IsBusy)
+        if (IsBusy && !alreadyBusy)
         {
             return;
         }
 
         BusyMessage = "Harvesting…";
-        IsBusy = true;
-        await Task.Yield();
+        if (!alreadyBusy)
+        {
+            IsBusy = true;
+            await Task.Yield();
+        }
+
         try
         {
             var gameRoot = GameRoot;
@@ -560,7 +592,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            IsBusy = false;
+            if (!alreadyBusy)
+            {
+                IsBusy = false;
+            }
         }
     }
 
@@ -678,6 +713,57 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
             RefreshInventory();
+            QueuePackUpdateCheck();
+        }
+    }
+
+    private void QueuePackUpdateCheck()
+    {
+        _packCheckCts?.Cancel();
+        _packCheckCts?.Dispose();
+        _packCheckCts = new CancellationTokenSource();
+        PackUpdateAvailable = false;
+        PackUpdateSummary = string.Empty;
+        _ = CheckPackUpdatesAsync(ManagerData, ProfileId, _packCheckCts.Token);
+    }
+
+    private async Task CheckPackUpdatesAsync(string managerData, string profileId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(managerData) || string.IsNullOrWhiteSpace(profileId))
+        {
+            return;
+        }
+
+        try
+        {
+            var profile = new ProfileStore().TryRead(managerData, profileId);
+            if (string.IsNullOrWhiteSpace(profile?.PackSource))
+            {
+                return;
+            }
+
+            var pack = await ModPackSource.LoadAsync(profile.PackSource, cancellationToken: cancellationToken)
+                .ConfigureAwait(true);
+            cancellationToken.ThrowIfCancellationRequested();
+            var report = ModPackUpdateCheck.Compare(pack, profile.Enabled, ModStore.List(managerData));
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            PackUpdateAvailable = report.HasUpdates;
+            PackUpdateSummary = report.Summary;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                PackUpdateAvailable = false;
+                PackUpdateSummary = string.Empty;
+            }
         }
     }
 
@@ -893,10 +979,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 item.Key,
                 item.Version,
                 [SelectedOverwritePath]);
-            InstallInventory.SetEnabled(ManagerData, ProfileId, assigned.Document.ModKey, assigned.PreviousVersion, enabled: false);
-            InstallInventory.SetEnabled(ManagerData, ProfileId, assigned.Document.ModKey, assigned.Document.Version, enabled: true);
-            Status = $"Assigned Overwrite into {assigned.Document.ModKey} {assigned.Document.Version} (left {assigned.PreviousVersion} in the store). Deploy to apply.";
+            Status = $"Assigned {assigned.AssignedCount} Overwrite file(s) onto {assigned.ModKey} for this profile. Deploy to apply.";
             RefreshInventory();
+            RefreshOverwrite();
         }
         catch (Exception ex)
         {
@@ -1039,8 +1124,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async void Launch()
-        => await LaunchAsync().ConfigureAwait(true);
+    private async void Launch(string mode)
+    {
+        LaunchMode = mode;
+        await LaunchAsync().ConfigureAwait(true);
+    }
 
     private async Task LaunchAsync()
     {
@@ -1079,7 +1167,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ? "Waiting for server and client to quit…"
                 : "Waiting for the client to quit…";
             await engine.WaitUntilIdleAsync().ConfigureAwait(true);
-            Status += Environment.NewLine + "SPT has quit. Click Harvest to collect changes.";
+            await HarvestAsync(alreadyBusy: true).ConfigureAwait(true);
+            Status = "SPT has quit." + Environment.NewLine + Status;
         }
         catch (Exception ex)
         {

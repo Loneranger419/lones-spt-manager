@@ -468,7 +468,7 @@ public sealed class ProfileHarvestTests
     }
 
     [Fact]
-    public void AssignOverwrite_CreatesNewStoreVersion_LeavesOriginal()
+    public void AssignOverwrite_AttachesRuntime_LeavesStoreVersion()
     {
         using var fx = new DeployFixture();
         fx.PutMod("Talk", "1.0", new Dictionary<string, string>
@@ -485,17 +485,23 @@ public sealed class ProfileHarvestTests
             "Talk",
             "1.0",
             ["SPT_Runtime/user/mods/Talk/generated.json"]);
-        Assert.NotEqual("1.0", assigned.Document.Version);
-        Assert.Equal("1.0", assigned.PreviousVersion);
-        Assert.Contains(assigned.Document.Files, file => file.CanonicalPath == "SPT_Runtime/user/mods/Talk/generated.json");
+        Assert.Equal("Talk", assigned.ModKey);
+        Assert.Equal(1, assigned.AssignedCount);
+        var runtime = ProfileRuntimeStore.TryRead(fx.ManagerData, ProfilePaths.DefaultProfileId, "Talk");
+        Assert.NotNull(runtime);
+        Assert.Contains(runtime.Files, file => file.CanonicalPath == "SPT_Runtime/user/mods/Talk/generated.json");
         Assert.Equal("talk", File.ReadAllText(Path.Combine(ModStore.FilesDirectory(fx.ManagerData, "Talk", "1.0"), "SPT_Runtime", "user", "mods", "Talk", "mod.dll")));
+        Assert.Null(ModStore.TryRead(fx.ManagerData, "Talk", HarvestRules.RuntimeVersion));
         Assert.DoesNotContain(
             HarvestEngine.ListOverwrite(fx.ManagerData, ProfilePaths.DefaultProfileId),
             path => path.Equals("SPT_Runtime/user/mods/Talk/generated.json", StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request(fx.Enable(("Talk", assigned.Document.Version, 0)))).Status);
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request(fx.Enable(("Talk", "1.0", 0)))).Status);
         Assert.Equal("session", File.ReadAllText(fx.Install(SptLayout.UserMods + "/Talk/generated.json")));
         Assert.Equal("talk", File.ReadAllText(fx.Install(SptLayout.UserMods + "/Talk/mod.dll")));
+        var listed = InstallInventory.Scan(fx.GameRoot, fx.ManagerData, ProfilePaths.DefaultProfileId);
+        Assert.Single(listed.Items, item => item.Kind == InstallInventory.StoreKind && item.Key == "Talk");
+        Assert.Equal(1, listed.Items.Single(item => item.Key == "Talk").RuntimeFileCount);
     }
 
     [Fact]

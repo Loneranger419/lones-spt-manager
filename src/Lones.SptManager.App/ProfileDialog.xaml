@@ -57,7 +57,7 @@
                            Margin="0,6,0,0"
                            FontSize="11"
                            Foreground="{DynamicResource MutedBrush}"
-                           Text="Update reinstalls this pack. Store hits are reused; load order follows the JSON list." />
+                           Text="Update reinstalls this pack. Store hits are reused. Pack mods follow the JSON list; mods you added yourself stay unless the pack starts including them." />
             </StackPanel>
             <StackPanel x:Name="CopyFromPanel" Margin="0,12,0,0">
                 <TextBlock Text="Copy from another profile" Foreground="{DynamicResource MutedBrush}" />

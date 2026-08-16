@@ -130,6 +130,73 @@ public static class InstallInventory
         SaveLoadOrder(store, managerData, profileId, enabled, existing);
     }
 
+    public static int ApplyPackLoadOrder(
+        string managerData,
+        string profileId,
+        IReadOnlyList<(string ModKey, string Version)> packOrder,
+        IReadOnlyList<int>? packForgeIds = null)
+    {
+        var store = new ProfileStore();
+        var existing = store.TryRead(managerData, profileId);
+        var documents = ModStore.List(managerData);
+        var newKeys = packOrder
+            .Select(item => item.ModKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var newIds = new HashSet<int>(packForgeIds ?? []);
+        foreach (var (modKey, version) in packOrder)
+        {
+            foreach (var id in ForgeIdsFor(documents, modKey, version))
+            {
+                newIds.Add(id);
+            }
+        }
+
+        var previousKeys = new HashSet<string>(existing?.PackModKeys ?? [], StringComparer.OrdinalIgnoreCase);
+        var previousIds = new HashSet<int>(existing?.PackForgeIds ?? []);
+        var hadPackSnapshot = previousKeys.Count > 0 || previousIds.Count > 0;
+
+        var extras = (existing?.Enabled ?? [])
+            .Where(item => !HarvestRules.IsRuntimeVersion(item.Version))
+            .Where(item => !BelongsToPack(item, documents, newKeys, newIds))
+            .Where(item => !hadPackSnapshot || !BelongsToPack(item, documents, previousKeys, previousIds))
+            .OrderBy(item => item.Priority)
+            .ThenBy(item => item.ModKey, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var merged = new List<EnabledMod>(packOrder.Count + extras.Length);
+        for (var i = 0; i < packOrder.Count; i++)
+        {
+            merged.Add(new EnabledMod
+            {
+                ModKey = packOrder[i].ModKey,
+                Version = packOrder[i].Version,
+                Priority = i,
+                Enabled = true
+            });
+        }
+
+        foreach (var extra in extras)
+        {
+            merged.Add(new EnabledMod
+            {
+                ModKey = extra.ModKey,
+                Version = extra.Version,
+                Priority = merged.Count,
+                Enabled = extra.IsOn
+            });
+        }
+
+        store.Save(
+            managerData,
+            profileId,
+            RuntimeAttachment.WithoutStoreRuntime(merged),
+            existing?.LaunchMode,
+            existing?.JoinUrl,
+            packForgeIds: newIds.OrderBy(id => id).ToArray(),
+            packModKeys: packOrder.Select(item => item.ModKey).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        return extras.Length;
+    }
+
     public static void MovePriority(string managerData, string profileId, string modKey, string version, int delta)
     {
         var store = new ProfileStore();
@@ -192,6 +259,38 @@ public static class InstallInventory
         to = Math.Clamp(to, 0, visible.Count);
         visible.Insert(to, row);
         SaveLoadOrder(store, managerData, profileId, visible, existing);
+    }
+
+    private static bool BelongsToPack(
+        EnabledMod item,
+        IReadOnlyList<ModDocument> store,
+        IReadOnlySet<string> packKeys,
+        IReadOnlySet<int> packForgeIds)
+    {
+        if (packKeys.Contains(item.ModKey))
+        {
+            return true;
+        }
+
+        return ForgeIdsFor(store, item.ModKey, version: null).Any(packForgeIds.Contains);
+    }
+
+    private static IEnumerable<int> ForgeIdsFor(IReadOnlyList<ModDocument> store, string modKey, string? version)
+    {
+        foreach (var document in store)
+        {
+            if (document.ForgeModId is not int id
+                || !document.ModKey.Equals(modKey, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (version is null
+                || document.Version.Equals(version, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return id;
+            }
+        }
     }
 
     private static void SaveLoadOrder(

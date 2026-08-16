@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Lones.SptManager.Core;
 
 namespace Lones.SptManager.Forge;
 
@@ -141,6 +142,74 @@ public static class ModPackSource
     private static bool LooksLikeWindowsPath(string source)
         => source.Contains('\\')
            || (source.Length >= 2 && char.IsLetter(source[0]) && source[1] == ':');
+
+    public static async Task<string> ReadJsonAsync(string source, HttpClient? http = null, CancellationToken cancellationToken = default)
+    {
+        var resolved = Normalize(source);
+        if (!IsHttpsUrl(resolved))
+        {
+            var info = new FileInfo(resolved);
+            if (info.Length > MaxJsonBytes)
+            {
+                throw new InvalidOperationException("Pack JSON is larger than 2 MB.");
+            }
+
+            return await File.ReadAllTextAsync(resolved, cancellationToken).ConfigureAwait(false);
+        }
+
+        var owns = http is null;
+        http ??= new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        try
+        {
+            if (owns)
+            {
+                http.DefaultRequestHeaders.UserAgent.ParseAdd(ProductInfo.UserAgent);
+            }
+
+            using var response = await http.GetAsync(resolved, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            if (response.Content.Headers.ContentLength is > MaxJsonBytes)
+            {
+                throw new InvalidOperationException("Pack JSON is larger than 2 MB.");
+            }
+
+            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var limited = new MemoryStream();
+            var buffer = new byte[8192];
+            var total = 0;
+            while (true)
+            {
+                var read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                total += read;
+                if (total > MaxJsonBytes)
+                {
+                    throw new InvalidOperationException("Pack JSON is larger than 2 MB.");
+                }
+
+                limited.Write(buffer, 0, read);
+            }
+
+            limited.Position = 0;
+            using var reader = new StreamReader(limited);
+            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (owns)
+            {
+                http.Dispose();
+            }
+        }
+    }
+
+    public static async Task<ModPackManifest> LoadAsync(string source, HttpClient? http = null, CancellationToken cancellationToken = default)
+        => ModPackManifest.Parse(await ReadJsonAsync(source, http, cancellationToken).ConfigureAwait(false));
 
     private static bool LooksLikeHostPath(string source)
     {

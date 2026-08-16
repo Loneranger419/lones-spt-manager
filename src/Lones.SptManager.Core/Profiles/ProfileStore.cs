@@ -13,6 +13,8 @@ public sealed class ProfileDocument
     public string LaunchMode { get; init; } = "solo";
     public string? JoinUrl { get; init; }
     public string? PackSource { get; init; }
+    public IReadOnlyList<int> PackForgeIds { get; init; } = [];
+    public IReadOnlyList<string> PackModKeys { get; init; } = [];
     public DateTimeOffset UpdatedAtUtc { get; init; }
 }
 
@@ -224,7 +226,9 @@ public sealed class ProfileStore
         IReadOnlyList<EnabledMod> enabled,
         string? launchMode = null,
         string? joinUrl = null,
-        string? packSource = null)
+        string? packSource = null,
+        IReadOnlyList<int>? packForgeIds = null,
+        IReadOnlyList<string>? packModKeys = null)
     {
         var id = ProfilePaths.Sanitize(profileId);
         var existing = TryRead(managerData, id);
@@ -236,6 +240,8 @@ public sealed class ProfileStore
             LaunchMode = launchMode ?? existing?.LaunchMode ?? "solo",
             JoinUrl = joinUrl ?? existing?.JoinUrl,
             PackSource = FirstNonEmpty(packSource, existing?.PackSource),
+            PackForgeIds = packForgeIds ?? existing?.PackForgeIds ?? [],
+            PackModKeys = packModKeys ?? existing?.PackModKeys ?? [],
             UpdatedAtUtc = DateTimeOffset.UtcNow
         };
         File.WriteAllText(ProfilePaths.ProfileJson(managerData, id), JsonSerializer.Serialize(document, JsonOptions));

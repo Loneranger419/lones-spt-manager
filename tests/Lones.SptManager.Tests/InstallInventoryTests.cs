@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Lones.SptManager.Core.Deploy;
 using Lones.SptManager.Core.Inventory;
 using Lones.SptManager.Core.Paths;
@@ -255,6 +256,87 @@ public sealed class InstallInventoryTests
             .ToArray();
         Assert.Equal(new[] { "C", "A" }, ordered);
         Assert.False(InstallInventory.Scan(fx.GameRoot, fx.ManagerData, "default").Items.Single(item => item.Key == "B").Enabled);
+    }
+
+    [Fact]
+    public void ApplyPackLoadOrder_KeepsManualExtras_AbsorbsWhenPackListsThem()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("PackA", "1.0", new Dictionary<string, string> { ["BepInEx/plugins/PackA/a.dll"] = "a" });
+        fx.PutMod("Reticule", "1.0", new Dictionary<string, string> { ["BepInEx/plugins/Reticule/r.dll"] = "r" });
+        fx.PutMod("LaterPack", "2.0", new Dictionary<string, string> { ["BepInEx/plugins/LaterPack/l.dll"] = "l" });
+        WriteForgeId(fx, "PackA", "1.0", 10);
+        WriteForgeId(fx, "LaterPack", "2.0", 20);
+
+        new ProfileStore().Save(fx.ManagerData, "default",
+        [
+            new EnabledMod { ModKey = "PackA", Version = "1.0", Priority = 0, Enabled = true }
+        ]);
+        Assert.Equal(0, InstallInventory.ApplyPackLoadOrder(fx.ManagerData, "default", [("PackA", "1.0")], [10]));
+
+        InstallInventory.AddToLoadOrder(fx.ManagerData, "default", "Reticule", "1.0");
+        var extras = InstallInventory.ApplyPackLoadOrder(
+            fx.ManagerData,
+            "default",
+            [("PackA", "1.0"), ("LaterPack", "2.0")],
+            [10, 20]);
+        Assert.Equal(1, extras);
+        var profile = new ProfileStore().TryRead(fx.ManagerData, "default")!;
+        Assert.Equal(new[] { "PackA", "LaterPack", "Reticule" }, profile.Enabled.OrderBy(item => item.Priority).Select(item => item.ModKey).ToArray());
+        Assert.Equal(new[] { 10, 20 }, profile.PackForgeIds.ToArray());
+        Assert.Equal(new[] { "PackA", "LaterPack" }, profile.PackModKeys.ToArray());
+        Assert.DoesNotContain("Reticule", profile.PackModKeys);
+
+        WriteForgeId(fx, "Reticule", "1.0", 20);
+        extras = InstallInventory.ApplyPackLoadOrder(
+            fx.ManagerData,
+            "default",
+            [("PackA", "1.0"), ("LaterPack", "2.0")],
+            [10, 20]);
+        Assert.Equal(0, extras);
+        profile = new ProfileStore().TryRead(fx.ManagerData, "default")!;
+        Assert.Equal(new[] { "PackA", "LaterPack" }, profile.Enabled.OrderBy(item => item.Priority).Select(item => item.ModKey).ToArray());
+        Assert.DoesNotContain(profile.Enabled, item => item.ModKey == "Reticule");
+    }
+
+    [Fact]
+    public void ApplyPackLoadOrder_DropsRemovedPackMod_KeepsDisabledManual()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("PackA", "1.0", new Dictionary<string, string> { ["BepInEx/plugins/PackA/a.dll"] = "a" });
+        fx.PutMod("PackB", "1.0", new Dictionary<string, string> { ["BepInEx/plugins/PackB/b.dll"] = "b" });
+        fx.PutMod("Reticule", "1.0", new Dictionary<string, string> { ["BepInEx/plugins/Reticule/r.dll"] = "r" });
+        WriteForgeId(fx, "PackA", "1.0", 10);
+        WriteForgeId(fx, "PackB", "1.0", 11);
+
+        InstallInventory.ApplyPackLoadOrder(fx.ManagerData, "default", [("PackA", "1.0"), ("PackB", "1.0")], [10, 11]);
+        InstallInventory.AddToLoadOrder(fx.ManagerData, "default", "Reticule", "1.0");
+        InstallInventory.SetEnabled(fx.ManagerData, "default", "Reticule", "1.0", enabled: false);
+
+        InstallInventory.ApplyPackLoadOrder(fx.ManagerData, "default", [("PackA", "1.0")], [10]);
+        var profile = new ProfileStore().TryRead(fx.ManagerData, "default")!;
+        Assert.Equal(new[] { "PackA", "Reticule" }, profile.Enabled.OrderBy(item => item.Priority).Select(item => item.ModKey).ToArray());
+        Assert.False(profile.Enabled.Single(item => item.ModKey == "Reticule").IsOn);
+        Assert.DoesNotContain(profile.Enabled, item => item.ModKey == "PackB");
+    }
+
+    private static void WriteForgeId(DeployFixture fx, string key, string version, int forgeId)
+    {
+        var document = ModStore.TryRead(fx.ManagerData, key, version)!;
+        var updated = new ModDocument
+        {
+            ModKey = document.ModKey,
+            DisplayName = document.DisplayName,
+            Version = document.Version,
+            Kind = document.Kind,
+            Deployable = document.Deployable,
+            ForgeModId = forgeId,
+            Files = document.Files,
+            ImportedAtUtc = document.ImportedAtUtc
+        };
+        File.WriteAllText(
+            Path.Combine(ModStore.PackageDirectory(fx.ManagerData, key, version), "mod.json"),
+            JsonSerializer.Serialize(updated, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     }
 
     [Fact]

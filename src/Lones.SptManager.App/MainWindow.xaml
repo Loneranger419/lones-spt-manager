@@ -38,6 +38,7 @@
                     <ColumnDefinition Width="220" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
@@ -49,14 +50,23 @@
                           VerticalAlignment="Center" />
                 <Button Grid.Column="2" Content="Add" Width="64" Height="26" Margin="8,0,0,0" Command="{Binding AddProfileCommand}" />
                 <Button Grid.Column="3" Content="Edit" Width="64" Height="26" Margin="6,0,0,0" Command="{Binding EditProfileCommand}" />
-                <TextBlock Grid.Column="4"
+                <Button Grid.Column="4"
+                        Content="Pack update"
+                        Height="26"
+                        MinWidth="96"
+                        Margin="6,0,0,0"
+                        Command="{Binding OpenPackUpdateCommand}"
+                        ToolTip="{Binding PackUpdateSummary}"
+                        Visibility="{Binding PackUpdateAvailable, Converter={StaticResource BoolToVis}}"
+                        Style="{DynamicResource AccentButton}" />
+                <TextBlock Grid.Column="5"
                            Text="Lone's SPT Manager"
                            FontWeight="SemiBold"
                            FontSize="16"
                            VerticalAlignment="Center"
                            HorizontalAlignment="Right"
                            Margin="0,0,10,0" />
-                <Button Grid.Column="5"
+                <Button Grid.Column="6"
                         Content="Settings"
                         Width="80"
                         Height="26"
@@ -84,6 +94,10 @@
                          Margin="4,0,4,8"
                          Text="{Binding ModFilter, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="Filter by name, folder, version, or leftover path" />
+                <UniformGrid DockPanel.Dock="Bottom" Columns="2" Margin="4,8,4,0">
+                    <Button Content="Deploy" Height="30" Margin="0,0,4,0" Command="{Binding DeployCommand}" Style="{DynamicResource AccentButton}" />
+                    <Button Content="Harvest" Height="30" Margin="4,0,0,0" Command="{Binding HarvestCommand}" />
+                </UniformGrid>
                 <ListBox x:Name="ModList"
                          ItemsSource="{Binding InventoryItems}"
                          SelectedItem="{Binding SelectedModRow}"
@@ -168,25 +182,19 @@
                     <TextBlock FontWeight="SemiBold" Margin="0,0,0,8" Text="Instance" />
                     <TextBlock Text="Game root" Foreground="{DynamicResource MutedBrush}" />
                     <DockPanel Margin="0,2,0,8">
+                        <Button DockPanel.Dock="Right" Content="Bind" Width="72" Height="26" Margin="6,0,0,0" Command="{Binding BindCommand}" />
                         <Button DockPanel.Dock="Right" Content="Browse" Width="72" Height="26" Margin="6,0,0,0" Command="{Binding BrowseGameRootCommand}" />
                         <TextBox Text="{Binding GameRoot, UpdateSourceTrigger=PropertyChanged}" />
                     </DockPanel>
 
                     <TextBlock FontWeight="SemiBold" Margin="0,8,0,8" Text="Launch" />
-                    <TextBlock Text="Mode" Foreground="{DynamicResource MutedBrush}" />
-                    <ComboBox Margin="0,2,0,8"
-                              ItemsSource="{Binding LaunchModeChoices}"
-                              SelectedItem="{Binding LaunchMode}" />
-                    <TextBlock Text="Join URL (Fika client)" Foreground="{DynamicResource MutedBrush}" />
-                    <TextBox Margin="0,2,0,8" Text="{Binding JoinUrl, UpdateSourceTrigger=PropertyChanged}" />
-                    <UniformGrid Columns="2" Margin="0,0,0,8">
-                        <Button Content="Deploy" Height="30" Margin="0,0,4,4" Command="{Binding DeployCommand}" Style="{DynamicResource AccentButton}" />
-                        <Button Content="Launch" Height="30" Margin="4,0,0,4" Command="{Binding LaunchCommand}" Style="{DynamicResource AccentButton}" />
-                        <Button Content="Harvest" Height="30" Margin="0,0,4,4" Command="{Binding HarvestCommand}" />
-                        <Button Content="Bind" Height="30" Margin="4,0,0,4" Command="{Binding BindCommand}" />
-                        <Button Content="Import zip" Height="30" Margin="0,0,4,4" Command="{Binding ImportZipCommand}" />
-                        <Button Content="Repair" Height="30" Margin="4,0,0,4" Command="{Binding RepairCommand}" />
+                    <UniformGrid Columns="3" Margin="0,0,0,8">
+                        <Button Content="Solo" Height="30" Margin="0,0,4,0" Command="{Binding LaunchSoloCommand}" Style="{DynamicResource AccentButton}" />
+                        <Button Content="Fika host" Height="30" Margin="2,0,2,0" Command="{Binding LaunchFikaHostCommand}" Style="{DynamicResource AccentButton}" />
+                        <Button Content="Fika join" Height="30" Margin="4,0,0,0" Command="{Binding LaunchFikaJoinCommand}" Style="{DynamicResource AccentButton}" />
                     </UniformGrid>
+                    <TextBlock Text="Join URL (Fika join)" Foreground="{DynamicResource MutedBrush}" />
+                    <TextBox Margin="0,2,0,8" Text="{Binding JoinUrl, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
 
                 <TabControl>
@@ -196,9 +204,10 @@
                                 <Button DockPanel.Dock="Right" Content="Search" Width="72" Height="26" Margin="6,0,0,0" Command="{Binding SearchForgeCommand}" />
                                 <TextBox Text="{Binding ForgeQuery, UpdateSourceTrigger=PropertyChanged}" />
                             </DockPanel>
-                            <UniformGrid DockPanel.Dock="Bottom" Columns="2" Margin="0,6,0,0">
+                            <UniformGrid DockPanel.Dock="Bottom" Columns="3" Margin="0,6,0,0">
                                 <Button Content="Install" Height="28" Margin="0,0,4,0" Command="{Binding InstallForgeCommand}" />
-                                <Button Content="Updates" Height="28" Margin="4,0,0,0" Command="{Binding CheckUpdatesCommand}" />
+                                <Button Content="Updates" Height="28" Margin="2,0,2,0" Command="{Binding CheckUpdatesCommand}" />
+                                <Button Content="Import zip" Height="28" Margin="4,0,0,0" Command="{Binding ImportZipCommand}" />
                             </UniformGrid>
                             <ListBox ItemsSource="{Binding ForgeHits}"
                                      SelectedItem="{Binding SelectedForgeHit}">

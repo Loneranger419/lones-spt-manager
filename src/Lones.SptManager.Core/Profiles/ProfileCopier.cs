@@ -92,6 +92,8 @@ public static class ProfileCopier
             LaunchMode = options.LaunchSettings ? sourceProfile.LaunchMode : "solo",
             JoinUrl = options.LaunchSettings ? sourceProfile.JoinUrl : null,
             PackSource = sourceProfile.PackSource,
+            PackForgeIds = sourceProfile.PackForgeIds,
+            PackModKeys = sourceProfile.PackModKeys,
             UpdatedAtUtc = DateTimeOffset.UtcNow
         };
         File.WriteAllText(
