@@ -6,6 +6,9 @@
     <ProjectReference Include="..\Lones.SptManager.Native\Lones.SptManager.Native.csproj" />
     <Content Include="..\..\mods.json.example" Link="mods.json.example" CopyToOutputDirectory="PreserveNewest" />
     <Resource Include="Assets\app.ico" />
+    <Content Remove="Assets\readme-main.png" />
+    <Resource Remove="Assets\readme-main.png" />
+    <None Include="Assets\readme-main.png" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/lones-spt-manager-icon.png" width="160" alt="Lone's SPT Manager">
+  <img src="assets/lones-spt-manager-icon.png" width="320" alt="Lone's SPT Manager">
 </p>
 
 # Lone's SPT Manager
@@ -18,6 +18,10 @@ Use it if you want to:
 This is **not** SPT Mod Manager. Do not run both against the same install. This app will not download SPT Mod Manager from The Forge.
 
 Not affiliated with SPT, SP-Tushonka, Battlestate Games, or Mod Organizer 2. [MIT](LICENSE) licensed.
+
+<p align="center">
+  <img src="src/Lones.SptManager.App/Assets/readme-main.png" alt="Main window with a profile, installed mods, and The Forge tab">
+</p>
 
 ---
 

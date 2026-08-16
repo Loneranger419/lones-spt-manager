@@ -51,7 +51,7 @@ After you quit, **Harvest** copies new or changed files into **Overwrite**. Conf
 - **Leftovers** — right-click **Import leftover** to claim a real install folder into the store, then Deploy to junction it.
 - **Purge manager data** — detaches junctions and wipes store / profiles / instances / cache. Does **not** delete the SPT install. Bind afterward.
 
-Theme follows Windows **Settings → Personalization → Colors**. Default window is 1330×930. The exe and window chrome use `src/Lones.SptManager.App/Assets/app.ico`. Branding PNG is `assets/lones-spt-manager-icon.png`. Distribution is [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases), not a Forge listing. Forge thumbnails cache under `cache/thumbnails/`.
+Theme follows Windows **Settings → Personalization → Colors**. Default window is 1330×930. The exe and window chrome use `src/Lones.SptManager.App/Assets/app.ico`. Branding PNG is `assets/lones-spt-manager-icon.png`. README screenshot is `src/Lones.SptManager.App/Assets/readme-main.png` (not embedded in the exe). Distribution is [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases), not a Forge listing. Forge thumbnails cache under `cache/thumbnails/`.
 
 ---
 
