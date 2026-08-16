@@ -38,7 +38,7 @@ After you quit, **Harvest** copies new or changed files into **Overwrite**. You 
 ## Using the app
 
 - **Profiles** — dropdown switches and deploys. Add can copy from another profile (saves, generated files, BepInEx configs, Overwrite, enabled mods) or install a Forge **pack** from an HTTPS / local `mods.json` (`id` + `installedVersion`; list order = load order 0 first). Edit can rename, copy, or delete (not the last profile).
-- **Packs** — progress popup with download size and extract `N / M` files plus per-file bytes. Cancel aborts the current download or extract. Store hits are reused. Failed entries are skipped. Zips use `System.IO.Compression` (zip64); 7z uses SharpCompress.
+- **Packs** — progress popup with download size and extract `N / M` files plus per-file bytes. Cancel aborts the current download or extract. Store hits are reused. Failed entries are skipped. Zips use `System.IO.Compression` (zip64) and extract many small files in parallel (hash in memory, progress throttled); 7z uses SharpCompress and stays sequential for solid archives.
 - **The Forge** — search `sp-mod.com` (no token). Install downloads to `cache/forge/` then the store. `conflict: true` blocks. `fika_compatibility=incompatible` warns. Honour HTTP 429 / `Retry-After`.
 - **Launch** — **solo** / **Fika host** starts `SPT_Runtime\SPT.Server.exe` then `SPT.Launcher.exe` (cwd `SPT_Runtime`), waits for TCP 6969 or log `Server has started`. **Fika join** starts the launcher only and writes `user\launcher\config.json` `Url` without dropping other keys. Never starts `EscapeFromTarkov.exe` or BattlEye. Harvest after you quit.
 - **Leftovers** — right-click **Import leftover** to claim a real install folder into the store, then Deploy to junction it.

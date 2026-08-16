@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using Lones.SptManager.Core.Deploy;
@@ -262,6 +263,9 @@ public sealed class InstallMapper
         }
     }
 
+    private const int SmallFileBytes = 1024 * 1024;
+    private const int ParallelZipThreshold = 32;
+
     private static List<ModFileRecord> ExtractMapped(
         string archivePath,
         ArchiveKind kind,
@@ -292,7 +296,108 @@ public sealed class InstallMapper
         IProgress<string>? progress,
         CancellationToken cancellationToken)
     {
+        var work = new List<(MappedEntry Mapped, string Key, string Dest)>(map.DeployFiles.Count);
+        foreach (var mapped in map.DeployFiles)
+        {
+            if (mapped.CanonicalPath is null)
+            {
+                continue;
+            }
+
+            var dest = Path.Combine(filesDir, mapped.CanonicalPath.Replace('/', Path.DirectorySeparatorChar));
+            ArchivePathRules.EnsureSafe(mapped.ArchivePath, filesDir);
+            work.Add((mapped, ArchivePathRules.NormalizeEntry(mapped.ArchivePath), dest));
+        }
+
+        PrecreateDirectories(work.Select(item => item.Dest));
+        var clock = new ExtractClock(progress, work.Count);
+        if (work.Count >= ParallelZipThreshold && Environment.ProcessorCount > 1)
+        {
+            return ExtractZipParallel(archivePath, work, clock, cancellationToken);
+        }
+
+        return ExtractZipSequential(archivePath, work, clock, cancellationToken);
+    }
+
+    private static List<ModFileRecord> ExtractZipSequential(
+        string archivePath,
+        List<(MappedEntry Mapped, string Key, string Dest)> work,
+        ExtractClock clock,
+        CancellationToken cancellationToken)
+    {
         using var zip = ZipFile.OpenRead(archivePath);
+        var byNormalized = ZipLookup(zip);
+        var records = new List<ModFileRecord>(work.Count);
+        foreach (var item in work)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!byNormalized.TryGetValue(item.Key, out var entry))
+            {
+                throw new InvalidOperationException("Mapped file was not extracted: " + item.Mapped.ArchivePath);
+            }
+
+            using var input = entry.Open();
+            var hash = WriteExtracted(input, item.Dest, entry.Length, clock, cancellationToken);
+            records.Add(new ModFileRecord
+            {
+                CanonicalPath = GamePath.Normalize(item.Mapped.CanonicalPath!),
+                Sha256 = hash
+            });
+            clock.FileFinished();
+        }
+
+        return records;
+    }
+
+    private static List<ModFileRecord> ExtractZipParallel(
+        string archivePath,
+        List<(MappedEntry Mapped, string Key, string Dest)> work,
+        ExtractClock clock,
+        CancellationToken cancellationToken)
+    {
+        var records = new ModFileRecord[work.Count];
+        var workers = Math.Clamp(Environment.ProcessorCount, 2, 8);
+        var options = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = workers,
+            CancellationToken = cancellationToken
+        };
+        Parallel.For(0, workers, options, worker =>
+        {
+            var start = worker * work.Count / workers;
+            var end = (worker + 1) * work.Count / workers;
+            if (start >= end)
+            {
+                return;
+            }
+
+            using var zip = ZipFile.OpenRead(archivePath);
+            var byNormalized = ZipLookup(zip);
+            for (var i = start; i < end; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var item = work[i];
+                if (!byNormalized.TryGetValue(item.Key, out var entry))
+                {
+                    throw new InvalidOperationException("Mapped file was not extracted: " + item.Mapped.ArchivePath);
+                }
+
+                using var input = entry.Open();
+                var hash = WriteExtracted(input, item.Dest, entry.Length, clock, cancellationToken);
+                records[i] = new ModFileRecord
+                {
+                    CanonicalPath = GamePath.Normalize(item.Mapped.CanonicalPath!),
+                    Sha256 = hash
+                };
+                clock.FileFinished();
+            }
+        });
+
+        return [.. records];
+    }
+
+    private static Dictionary<string, ZipArchiveEntry> ZipLookup(ZipArchive zip)
+    {
         var byNormalized = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in zip.Entries)
         {
@@ -304,37 +409,7 @@ public sealed class InstallMapper
             byNormalized[ArchivePathRules.NormalizeEntry(entry.FullName)] = entry;
         }
 
-        var records = new List<ModFileRecord>(map.DeployFiles.Count);
-        var total = map.DeployFiles.Count;
-        progress?.Report($"Extracting 0 / {total} files…");
-        var done = 0;
-        foreach (var mapped in map.DeployFiles)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (mapped.CanonicalPath is null)
-            {
-                continue;
-            }
-
-            var key = ArchivePathRules.NormalizeEntry(mapped.ArchivePath);
-            if (!byNormalized.TryGetValue(key, out var entry))
-            {
-                throw new InvalidOperationException("Mapped file was not extracted: " + mapped.ArchivePath);
-            }
-
-            ArchivePathRules.EnsureSafe(entry.FullName, filesDir);
-            var dest = Path.Combine(filesDir, mapped.CanonicalPath.Replace('/', Path.DirectorySeparatorChar));
-            using var input = entry.Open();
-            var hash = CopyHashed(input, dest, entry.Length, done + 1, total, progress, cancellationToken);
-            records.Add(new ModFileRecord
-            {
-                CanonicalPath = GamePath.Normalize(mapped.CanonicalPath),
-                Sha256 = hash
-            });
-            done++;
-        }
-
-        return records;
+        return byNormalized;
     }
 
     private static List<ModFileRecord> ExtractSharpCompress(
@@ -350,11 +425,23 @@ public sealed class InstallMapper
             entry => ArchivePathRules.NormalizeEntry(entry.ArchivePath),
             entry => entry,
             StringComparer.OrdinalIgnoreCase);
+        var destByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var mapped in map.DeployFiles)
+        {
+            if (mapped.CanonicalPath is null)
+            {
+                continue;
+            }
+
+            var dest = Path.Combine(filesDir, mapped.CanonicalPath.Replace('/', Path.DirectorySeparatorChar));
+            ArchivePathRules.EnsureSafe(mapped.ArchivePath, filesDir);
+            destByKey[ArchivePathRules.NormalizeEntry(mapped.ArchivePath)] = dest;
+        }
+
+        PrecreateDirectories(destByKey.Values);
         var records = new List<ModFileRecord>(map.DeployFiles.Count);
-        var total = map.DeployFiles.Count;
-        var done = 0;
+        var clock = new ExtractClock(progress, map.DeployFiles.Count);
         var solid = consumeUnmapped || archive is SevenZipArchive;
-        progress?.Report($"Extracting 0 / {total} files…");
 
         foreach (var entry in archive.Entries)
         {
@@ -376,11 +463,9 @@ public sealed class InstallMapper
                 continue;
             }
 
-            ArchivePathRules.EnsureSafe(entry.Key, filesDir);
-            var dest = Path.Combine(filesDir, mapped.CanonicalPath.Replace('/', Path.DirectorySeparatorChar));
             using (var input = entry.OpenEntryStream())
             {
-                var hash = CopyHashed(input, dest, entry.Size, done + 1, total, progress, cancellationToken);
+                var hash = WriteExtracted(input, destByKey[normalized], entry.Size, clock, cancellationToken);
                 records.Add(new ModFileRecord
                 {
                     CanonicalPath = GamePath.Normalize(mapped.CanonicalPath),
@@ -388,50 +473,137 @@ public sealed class InstallMapper
                 });
             }
 
-            done++;
+            clock.FileFinished();
         }
 
-        if (records.Count != total)
+        if (records.Count != map.DeployFiles.Count)
         {
-            throw new InvalidOperationException($"Mapped file was not extracted: expected {total}, got {records.Count}.");
+            throw new InvalidOperationException($"Mapped file was not extracted: expected {map.DeployFiles.Count}, got {records.Count}.");
         }
 
         return records;
     }
 
-    private static string CopyHashed(
-        Stream input,
-        string dest,
-        long expectedLength,
-        int fileNumber,
-        int total,
-        IProgress<string>? progress,
-        CancellationToken cancellationToken)
+    private static void PrecreateDirectories(IEnumerable<string> destinations)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-        using var sha = SHA256.Create();
-        using var output = File.Create(dest);
-        using var hashed = new CryptoStream(output, sha, CryptoStreamMode.Write);
-        var buffer = new byte[512 * 1024];
-        long written = 0;
-        var lastReport = DateTime.UtcNow;
-        progress?.Report(FormatExtract(fileNumber, total, 0, expectedLength));
-        int read;
-        while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dest in destinations)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            hashed.Write(buffer, 0, read);
-            written += read;
-            if (progress is not null && DateTime.UtcNow - lastReport >= TimeSpan.FromMilliseconds(250))
+            var dir = Path.GetDirectoryName(dest);
+            if (!string.IsNullOrEmpty(dir))
             {
-                progress.Report(FormatExtract(fileNumber, total, written, expectedLength));
-                lastReport = DateTime.UtcNow;
+                dirs.Add(dir);
             }
         }
 
-        hashed.FlushFinalBlock();
-        progress?.Report(FormatExtract(fileNumber, total, written, expectedLength));
-        return Convert.ToHexString(sha.Hash!);
+        foreach (var dir in dirs.OrderBy(item => item.Length))
+        {
+            Directory.CreateDirectory(dir);
+        }
+    }
+
+    private static string WriteExtracted(
+        Stream input,
+        string dest,
+        long expectedLength,
+        ExtractClock clock,
+        CancellationToken cancellationToken)
+    {
+        if (expectedLength >= 0 && expectedLength <= SmallFileBytes)
+        {
+            var data = expectedLength == 0 ? [] : new byte[expectedLength];
+            var offset = 0;
+            while (offset < data.Length)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var read = input.Read(data, offset, data.Length - offset);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                offset += read;
+            }
+
+            if (offset != data.Length)
+            {
+                Array.Resize(ref data, offset);
+            }
+
+            var hash = Convert.ToHexString(SHA256.HashData(data));
+            File.WriteAllBytes(dest, data);
+            return hash;
+        }
+
+        var buffer = ArrayPool<byte>.Shared.Rent(512 * 1024);
+        try
+        {
+            using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            using var output = new FileStream(
+                dest,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                512 * 1024,
+                FileOptions.SequentialScan);
+            long written = 0;
+            int read;
+            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                sha.AppendData(buffer.AsSpan(0, read));
+                output.Write(buffer, 0, read);
+                written += read;
+                clock.Bytes(written, expectedLength);
+            }
+
+            return Convert.ToHexString(sha.GetCurrentHash());
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private sealed class ExtractClock
+    {
+        private readonly IProgress<string>? _progress;
+        private readonly int _total;
+        private int _done;
+        private long _nextReport;
+
+        public ExtractClock(IProgress<string>? progress, int total)
+        {
+            _progress = progress;
+            _total = total;
+            _progress?.Report($"Extracting 0 / {total} files…");
+        }
+
+        public void FileFinished()
+        {
+            var n = Interlocked.Increment(ref _done);
+            Report(n, 0, 0, force: n == 1 || n == _total);
+        }
+
+        public void Bytes(long written, long expected)
+            => Report(Math.Max(Volatile.Read(ref _done), 1), written, expected, force: false);
+
+        private void Report(int current, long written, long expected, bool force)
+        {
+            if (_progress is null)
+            {
+                return;
+            }
+
+            var now = Environment.TickCount64;
+            if (!force && now < Volatile.Read(ref _nextReport))
+            {
+                return;
+            }
+
+            Volatile.Write(ref _nextReport, now + 250);
+            _progress.Report(FormatExtract(current, _total, written, expected));
+        }
     }
 
     private static string FormatExtract(int fileNumber, int total, long written, long expectedLength)

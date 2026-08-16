@@ -188,6 +188,37 @@ public sealed class InstallMapperTests
     }
 
     [Fact]
+    public void Import_ManySmallFiles_HashesMatchAndUsesParallelPath()
+    {
+        var work = Path.Combine(Path.GetTempPath(), "lones-many-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        try
+        {
+            var entries = Enumerable.Range(0, 48)
+                .Select(i => ($"BepInEx/plugins/Many/f{i:D2}.dll", "payload-" + i))
+                .ToArray();
+            var zip = ZipFixture.WriteZip(Path.Combine(work, "Many.zip"), entries);
+            var manager = Path.Combine(work, "mgr");
+            var result = new InstallMapper().ImportArchive(zip, manager);
+            Assert.NotNull(result.Document);
+            Assert.Equal(48, result.Document!.Files.Count);
+            var filesDir = Path.Combine(
+                ModStore.PackageDirectory(manager, result.Document.ModKey, result.Document.Version),
+                "files");
+            foreach (var record in result.Document.Files)
+            {
+                var path = Path.Combine(filesDir, record.CanonicalPath.Replace('/', Path.DirectorySeparatorChar));
+                Assert.True(File.Exists(path));
+                Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path))), record.Sha256);
+            }
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Import_ZipSlip_DoesNotWriteStore()
     {
         var work = Path.Combine(Path.GetTempPath(), "lones-slip-" + Guid.NewGuid().ToString("N"));
