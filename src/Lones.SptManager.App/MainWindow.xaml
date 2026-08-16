@@ -8,7 +8,25 @@
         MinWidth="960"
         Background="{DynamicResource WindowBrush}"
         Foreground="{DynamicResource TextBrush}">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
+    <Grid>
     <DockPanel>
+        <DockPanel.Style>
+            <Style TargetType="DockPanel">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                        <Setter Property="IsHitTestVisible" Value="False" />
+                        <Setter Property="Effect">
+                            <Setter.Value>
+                                <BlurEffect Radius="8" KernelType="Gaussian" />
+                            </Setter.Value>
+                        </Setter>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </DockPanel.Style>
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource PanelBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
@@ -247,4 +265,40 @@
             </DockPanel>
         </Grid>
     </DockPanel>
+        <Border Background="#88000000"
+                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
+                IsHitTestVisible="True">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Grid Width="48" Height="48" Margin="0,0,0,12" RenderTransformOrigin="0.5,0.5">
+                    <Grid.RenderTransform>
+                        <RotateTransform />
+                    </Grid.RenderTransform>
+                    <Grid.Triggers>
+                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                            <BeginStoryboard>
+                                <Storyboard RepeatBehavior="Forever">
+                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                     From="0"
+                                                     To="360"
+                                                     Duration="0:0:0.8" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </Grid.Triggers>
+                    <Ellipse Stroke="{DynamicResource MutedBrush}"
+                             StrokeThickness="4"
+                             Opacity="0.3" />
+                    <Path Stroke="{DynamicResource AccentBrush}"
+                          StrokeThickness="4"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          Data="M 24,4 A 20,20 0 0 1 44,24" />
+                </Grid>
+                <TextBlock Text="{Binding BusyMessage}"
+                           Foreground="{DynamicResource AccentTextBrush}"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Grid>
 </Window>

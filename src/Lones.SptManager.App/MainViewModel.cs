@@ -28,6 +28,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private ModRowViewModel? _selectedModRow;
     private string? _selectedOverwritePath;
     private string _status = "Pick an SPT 4.1.x game root (folder with EscapeFromTarkov.exe and SPT_Runtime).";
+    private string _busyMessage = "Working…";
     private bool _busy;
     private bool _refreshingProfiles;
     private bool _hydratingThumbnails;
@@ -114,8 +115,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ProfileStore.RememberLastProfile(ManagerData, _profileId);
             LoadProfileLaunchSettings();
             RefreshInventory();
-            ApplySelectedProfile();
+            _ = ApplySelectedProfileAsync();
         }
+    }
+
+    public bool IsBusy
+    {
+        get => _busy;
+        private set
+        {
+            if (Set(ref _busy, value))
+            {
+                if (!value)
+                {
+                    BusyMessage = "Working…";
+                }
+
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public string BusyMessage
+    {
+        get => _busyMessage;
+        private set => Set(ref _busyMessage, value);
     }
 
     public string ForgeQuery
@@ -283,7 +307,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _busy = true;
+        IsBusy = true;
         _hydratingThumbnails = true;
         CommandManager.InvalidateRequerySuggested();
         try
@@ -323,7 +347,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         finally
         {
             _hydratingThumbnails = false;
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }
@@ -377,7 +401,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _busy = true;
+        IsBusy = true;
         CommandManager.InvalidateRequerySuggested();
         try
         {
@@ -402,7 +426,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }
@@ -410,31 +434,46 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string ModStorePath(string modKey, string version)
         => ModStore.PackageDirectory(ManagerData, modKey, version);
 
-    private void ApplySelectedProfile()
+    private async Task ApplySelectedProfileAsync()
     {
-        if (_busy || string.IsNullOrWhiteSpace(GameRoot) || string.IsNullOrWhiteSpace(ManagerData))
+        if (IsBusy || string.IsNullOrWhiteSpace(GameRoot) || string.IsNullOrWhiteSpace(ManagerData))
         {
             return;
         }
 
-        Deploy();
+        await DeployAsync("Switching profile…").ConfigureAwait(true);
         Status = "Switched to profile " + ProfileId + "." + Environment.NewLine + Status;
     }
 
-    private void Deploy()
+    private async void Deploy()
+        => await DeployAsync("Deploying…").ConfigureAwait(true);
+
+    private async Task DeployAsync(string message)
     {
-        _busy = true;
-        CommandManager.InvalidateRequerySuggested();
+        if (IsBusy)
+        {
+            return;
+        }
+
+        BusyMessage = message;
+        IsBusy = true;
+        await Task.Yield();
         try
         {
-            var baseline = Directory.Exists(GameRoot) ? new SptOwnedBaselineBuilder().Build(GameRoot) : null;
-            var result = new DeployEngine().Deploy(new DeployRequest
+            var gameRoot = GameRoot;
+            var managerData = ManagerData;
+            var profileId = ProfileId;
+            var result = await Task.Run(() =>
             {
-                GameRoot = GameRoot,
-                ManagerData = ManagerData,
-                ProfileId = ProfileId,
-                Baseline = baseline
-            });
+                var baseline = Directory.Exists(gameRoot) ? new SptOwnedBaselineBuilder().Build(gameRoot) : null;
+                return new DeployEngine().Deploy(new DeployRequest
+                {
+                    GameRoot = gameRoot,
+                    ManagerData = managerData,
+                    ProfileId = profileId,
+                    Baseline = baseline
+                });
+            }).ConfigureAwait(true);
             Status = result.Message ?? result.Status.ToString();
             if (result.Conflicts.Count > 0)
             {
@@ -453,14 +492,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
-            CommandManager.InvalidateRequerySuggested();
+            IsBusy = false;
         }
     }
 
     private void Repair()
     {
-        _busy = true;
+        IsBusy = true;
         CommandManager.InvalidateRequerySuggested();
         try
         {
@@ -473,19 +511,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }
 
-    private void Harvest()
+    private async void Harvest()
+        => await HarvestAsync().ConfigureAwait(true);
+
+    private async Task HarvestAsync()
     {
-        _busy = true;
-        CommandManager.InvalidateRequerySuggested();
+        if (IsBusy)
+        {
+            return;
+        }
+
+        BusyMessage = "Harvesting…";
+        IsBusy = true;
+        await Task.Yield();
         try
         {
-            var baseline = Directory.Exists(GameRoot) ? new SptOwnedBaselineBuilder().Build(GameRoot) : null;
-            var result = new HarvestEngine().Harvest(GameRoot, ManagerData, ProfileId, baseline);
+            var gameRoot = GameRoot;
+            var managerData = ManagerData;
+            var profileId = ProfileId;
+            var result = await Task.Run(() =>
+            {
+                var baseline = Directory.Exists(gameRoot) ? new SptOwnedBaselineBuilder().Build(gameRoot) : null;
+                return new HarvestEngine().Harvest(gameRoot, managerData, profileId, baseline);
+            }).ConfigureAwait(true);
             Status = result.Message ?? result.Status.ToString();
             var listed = HarvestEngine.ListOverwrite(ManagerData, ProfileId);
             RefreshOverwrite();
@@ -504,8 +557,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
-            CommandManager.InvalidateRequerySuggested();
+            IsBusy = false;
         }
     }
 
@@ -551,7 +603,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task InstallPackProfileAsync(string name, string packSource)
     {
-        _busy = true;
+        IsBusy = true;
         CommandManager.InvalidateRequerySuggested();
         var created = new ProfileStore().LoadOrCreate(ManagerData, name);
         var id = created.ProfileId;
@@ -620,7 +672,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
             }
 
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
             RefreshInventory();
         }
@@ -856,7 +908,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _busy = true;
+        IsBusy = true;
         CommandManager.InvalidateRequerySuggested();
         try
         {
@@ -880,7 +932,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }
@@ -898,7 +950,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void SearchForge()
     {
-        _busy = true;
+        IsBusy = true;
         CommandManager.InvalidateRequerySuggested();
         try
         {
@@ -921,7 +973,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }
@@ -933,7 +985,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _busy = true;
+        IsBusy = true;
         CommandManager.InvalidateRequerySuggested();
         try
         {
@@ -959,14 +1011,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }
 
     private void CheckUpdates()
     {
-        _busy = true;
+        IsBusy = true;
         CommandManager.InvalidateRequerySuggested();
         try
         {
@@ -979,35 +1031,52 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }
 
-    private void Launch()
+    private async void Launch()
+        => await LaunchAsync().ConfigureAwait(true);
+
+    private async Task LaunchAsync()
     {
-        _busy = true;
-        CommandManager.InvalidateRequerySuggested();
+        if (IsBusy)
+        {
+            return;
+        }
+
+        BusyMessage = "Starting SPT…";
+        IsBusy = true;
+        await Task.Yield();
         try
         {
-            var result = new LaunchEngine().Launch(new LaunchRequest
+            var request = new LaunchRequest
             {
                 GameRoot = GameRoot,
                 ManagerData = ManagerData,
                 ProfileId = ProfileId,
                 Mode = LaunchMode,
                 JoinUrl = string.IsNullOrWhiteSpace(JoinUrl) ? null : JoinUrl
-            });
+            };
+            var engine = new LaunchEngine();
+            var result = await Task.Run(() => engine.Launch(request)).ConfigureAwait(true);
             Status = result.Message ?? (result.Success ? "Launched." : "Launch failed.");
             if (result.Warnings.Count > 0)
             {
                 Status += Environment.NewLine + string.Join(Environment.NewLine, result.Warnings);
             }
 
-            if (result.Success)
+            if (!result.Success)
             {
-                Status += Environment.NewLine + "After you quit the game (and server, if started), click Harvest.";
+                return;
             }
+
+            BusyMessage = result.StartedServer
+                ? "Waiting for server and client to quit…"
+                : "Waiting for the client to quit…";
+            await engine.WaitUntilIdleAsync().ConfigureAwait(true);
+            Status += Environment.NewLine + "SPT has quit. Click Harvest to collect changes.";
         }
         catch (Exception ex)
         {
@@ -1015,8 +1084,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
-            CommandManager.InvalidateRequerySuggested();
+            IsBusy = false;
         }
     }
 
@@ -1377,7 +1445,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void Bind()
     {
-        _busy = true;
+        IsBusy = true;
         CommandManager.InvalidateRequerySuggested();
         try
         {
@@ -1417,7 +1485,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _busy = false;
+            IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }

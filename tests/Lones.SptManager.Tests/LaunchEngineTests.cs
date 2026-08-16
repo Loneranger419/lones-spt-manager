@@ -77,6 +77,19 @@ public sealed class LaunchEngineTests
     }
 
     [Fact]
+    public async Task WaitUntilIdle_WaitsUntilWatchedProcessesExit()
+    {
+        using var fx = new LaunchFixture();
+        fx.Lock.Running.Add("SPT.Server");
+        fx.Lock.Running.Add("SPT.Launcher");
+        var wait = fx.Engine.WaitUntilIdleAsync(TimeSpan.FromMilliseconds(20));
+        await Task.Delay(60);
+        Assert.False(wait.IsCompleted);
+        fx.Lock.Running.Clear();
+        await wait;
+    }
+
+    [Fact]
     public void NormalizeJoinUrl_RequiresHttpsAndPort()
     {
         Assert.Equal("https://10.0.0.2:6969", LauncherUrlPatcher.NormalizeJoinUrl("10.0.0.2"));

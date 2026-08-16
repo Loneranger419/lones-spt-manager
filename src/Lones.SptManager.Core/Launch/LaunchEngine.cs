@@ -116,6 +116,17 @@ public sealed class LaunchEngine
         };
     }
 
+    public async Task WaitUntilIdleAsync(
+        TimeSpan? pollInterval = null,
+        CancellationToken cancellationToken = default)
+    {
+        var delay = pollInterval ?? TimeSpan.FromSeconds(1);
+        while (_lock.RunningSptProcesses().Count > 0)
+        {
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public HarvestResult WaitThenHarvest(
         LaunchResult launch,
         string gameRoot,
