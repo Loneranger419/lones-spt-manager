@@ -15,9 +15,11 @@ Use it if you want to:
 - Install from The Forge or from a shared `mods.json` pack
 - Launch **solo**, **Fika host**, or **Fika join** from one window
 
-This is **not** SPT Mod Manager. Do not run both against the same install. This app will not download SPT Mod Manager from The Forge.
+This is **not** [SPT Mod Manager](https://sp-mod.com/mod/2851/spt-mod-manager). Do not run both against the same install. This app will not download SPT Mod Manager from The Forge.
 
 Not affiliated with SPT, SP-Tushonka, Battlestate Games, or Mod Organizer 2. [MIT](LICENSE) licensed.
+
+AI coding tools wrote a large part of this app. That is why it is not on The Forge ([their AI policy](https://sp-mod.com/content-guidelines)). Read the source if you care how it works before you point it at your SPT install.
 
 <p align="center">
   <img src="src/Lones.SptManager.App/Assets/readme-main.png" alt="Main window with a profile, installed mods, and The Forge tab">
@@ -111,7 +113,7 @@ This app never starts `EscapeFromTarkov.exe` or BattlEye. You click Play in the 
 **Do I extract this into the SPT folder?**
 No. Keep the exe outside the game. Bind the game root from inside the app.
 
-**Can I use this with SPT Mod Manager?**
+**Can I use this with [SPT Mod Manager](https://sp-mod.com/mod/2851/spt-mod-manager)?**
 No. Pick one manager for an install.
 
 **Where did my F12 / mod settings go?**
