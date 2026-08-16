@@ -21,6 +21,17 @@ dotnet run --project src/Lones.SptManager.App
 
 On first launch: **Bind** the SPT game root (the folder with `EscapeFromTarkov.exe`, `BepInEx`, and `SPT_Runtime`). Manager data defaults to `%AppData%\LonesSptManager`.
 
+### Release exe
+
+Push a version tag and GitHub Actions publishes a self-contained `win-x64` build (no .NET install on the player's machine):
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+That creates a [GitHub Release](https://github.com/Loneranger419/lones-spt-manager/releases) with `LonesSptManager.exe` and `LonesSptManager-win-x64.zip`. You can also **Actions → Release → Run workflow** to build an artifact without tagging.
+
 ---
 
 ## How it works
