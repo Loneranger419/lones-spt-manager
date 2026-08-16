@@ -3,7 +3,7 @@ namespace Lones.SptManager.Core;
 public static class ProductInfo
 {
     public const string Name = "Lone's SPT Manager";
-    public const string Version = "0.1.3";
+    public const string Version = "0.1.4";
     public const string UserAgent = "Lones-SPT-Manager/" + Version;
     public const int ManifestVersion = 1;
     public const string DefaultManagerFolderName = "LonesSptManager";
