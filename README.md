@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/lones-spt-manager-icon.png" width="320" alt="Lone's SPT Manager">
+  <img src="assets/lones-spt-manager-card.png" alt="Lone's SPT Manager">
 </p>
 
 # Lone's SPT Manager
