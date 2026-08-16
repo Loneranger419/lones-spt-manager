@@ -33,6 +33,8 @@ public sealed class ModRowViewModel : INotifyPropertyChanged
 
     public bool IsLeftover => Item.Kind == InstallInventory.LeftoverKind;
 
+    public bool IsDimmed => CanToggle && !_isChecked;
+
     public string Title => string.IsNullOrWhiteSpace(Item.DisplayName) ? Item.Key : Item.DisplayName;
 
     public string Subtitle
@@ -151,6 +153,7 @@ public sealed class ModRowViewModel : INotifyPropertyChanged
 
             _isChecked = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChecked)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDimmed)));
             _onToggle?.Invoke(this, value);
         }
     }
@@ -164,6 +167,7 @@ public sealed class ModRowViewModel : INotifyPropertyChanged
             {
                 _isChecked = enabled;
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChecked)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDimmed)));
             }
         }
         finally

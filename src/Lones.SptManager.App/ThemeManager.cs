@@ -1,10 +1,21 @@
+using Lones.SptManager.Core.Instance;
 using Microsoft.Win32;
 
 namespace Lones.SptManager.App;
 
 public static class ThemeManager
 {
+    public const string FollowWindowsLabel = "Follow Windows";
+    public const string DarkLabel = "Dark";
+    public const string LightLabel = "Light";
+
     private const string PersonalizeKey = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+
+    public static IReadOnlyList<string> Choices { get; } = [FollowWindowsLabel, DarkLabel, LightLabel];
+
+    public static AppTheme Preference { get; private set; } = AppTheme.Windows;
+
+    public static bool FollowsWindows => Preference == AppTheme.Windows;
 
     public static bool WindowsUsesLightTheme()
     {
@@ -20,8 +31,51 @@ public static class ThemeManager
         }
     }
 
-    public static void ApplyWindowsTheme()
-        => Apply(WindowsUsesLightTheme());
+    public static void ApplySaved()
+    {
+        Preference = AppSettings.LoadTheme(InstanceStore.DefaultManagerDataPath);
+        ApplyPreference();
+    }
+
+    public static void ApplyPreference()
+    {
+        var light = Preference switch
+        {
+            AppTheme.Light => true,
+            AppTheme.Dark => false,
+            _ => WindowsUsesLightTheme()
+        };
+        Apply(light);
+    }
+
+    public static void Preview(AppTheme theme)
+    {
+        Preference = theme;
+        ApplyPreference();
+    }
+
+    public static void Save(AppTheme theme)
+    {
+        Preference = theme;
+        AppSettings.SaveTheme(InstanceStore.DefaultManagerDataPath, theme);
+        ApplyPreference();
+    }
+
+    public static AppTheme FromLabel(string? label)
+        => label switch
+        {
+            DarkLabel => AppTheme.Dark,
+            LightLabel => AppTheme.Light,
+            _ => AppTheme.Windows
+        };
+
+    public static string ToLabel(AppTheme theme)
+        => theme switch
+        {
+            AppTheme.Dark => DarkLabel,
+            AppTheme.Light => LightLabel,
+            _ => FollowWindowsLabel
+        };
 
     public static void Apply(bool light)
     {

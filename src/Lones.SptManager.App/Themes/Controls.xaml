@@ -113,6 +113,9 @@
                             <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectionBrush}" />
                             <Setter Property="Foreground" Value="{DynamicResource SelectionTextBrush}" />
                         </Trigger>
+                        <DataTrigger Binding="{Binding IsDimmed}" Value="True">
+                            <Setter TargetName="bd" Property="Opacity" Value="0.5" />
+                        </DataTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>

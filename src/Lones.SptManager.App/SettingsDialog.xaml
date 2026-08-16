@@ -1,0 +1,54 @@
+<Window x:Class="Lones.SptManager.App.SettingsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings"
+        Width="540"
+        SizeToContent="Height"
+        MinWidth="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource WindowBrush}"
+        Foreground="{DynamicResource TextBrush}">
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="OK" Width="80" Height="28" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click" Style="{DynamicResource AccentButton}" />
+            <Button Content="Cancel" Width="80" Height="28" IsCancel="True" Click="Cancel_Click" />
+        </StackPanel>
+        <StackPanel>
+            <TextBlock Text="Appearance" FontWeight="SemiBold" Margin="0,0,0,8" />
+            <TextBlock Text="Theme" Foreground="{DynamicResource MutedBrush}" />
+            <ComboBox x:Name="ThemeBox" Margin="0,2,0,12" SelectionChanged="ThemeBox_SelectionChanged" />
+            <TextBlock TextWrapping="Wrap"
+                       Margin="0,0,0,16"
+                       FontSize="11"
+                       Foreground="{DynamicResource MutedBrush}"
+                       Text="Follow Windows uses Settings → Personalization → Colors. Dark and Light stay put until you change them." />
+
+            <TextBlock Text="Manager data" FontWeight="SemiBold" Margin="0,0,0,8" />
+            <TextBlock Text="Folder" Foreground="{DynamicResource MutedBrush}" />
+            <DockPanel Margin="0,2,0,8">
+                <Button DockPanel.Dock="Right"
+                        Content="Browse"
+                        Width="72"
+                        Height="26"
+                        Margin="6,0,0,0"
+                        Command="{Binding BrowseManagerDataCommand}" />
+                <TextBox Text="{Binding ManagerData, UpdateSourceTrigger=PropertyChanged}" />
+            </DockPanel>
+            <TextBlock TextWrapping="Wrap"
+                       Margin="0,0,0,8"
+                       FontSize="11"
+                       Foreground="{DynamicResource MutedBrush}"
+                       Text="Store, profiles, and cache live here. Default is %AppData%\LonesSptManager. This does not change the SPT game folder." />
+            <Button Content="Purge manager data"
+                    Height="30"
+                    HorizontalAlignment="Left"
+                    Command="{Binding PurgeCommand}" />
+            <TextBlock TextWrapping="Wrap"
+                       Margin="0,6,0,0"
+                       FontSize="11"
+                       Foreground="{DynamicResource MutedBrush}"
+                       Text="Removes this app’s store, profiles, and cache. Does not delete the SPT install. Bind again afterward." />
+        </StackPanel>
+    </DockPanel>
+</Window>

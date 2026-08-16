@@ -6,7 +6,7 @@ public partial class App : System.Windows.Application
 {
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
-        ThemeManager.ApplyWindowsTheme();
+        ThemeManager.ApplySaved();
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         base.OnStartup(e);
     }
@@ -19,11 +19,16 @@ public partial class App : System.Windows.Application
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
+        if (!ThemeManager.FollowsWindows)
+        {
+            return;
+        }
+
         if (e.Category is not (UserPreferenceCategory.General or UserPreferenceCategory.Color or UserPreferenceCategory.VisualStyle))
         {
             return;
         }
 
-        Dispatcher.Invoke(ThemeManager.ApplyWindowsTheme);
+        Dispatcher.Invoke(ThemeManager.ApplyPreference);
     }
 }

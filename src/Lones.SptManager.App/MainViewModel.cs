@@ -63,6 +63,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         BrowseGameRootCommand = new RelayCommand(BrowseGameRoot);
         BrowseManagerDataCommand = new RelayCommand(BrowseManagerData);
         PurgeCommand = new RelayCommand(Purge, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
+        SettingsCommand = new RelayCommand(OpenSettings, () => !_busy);
         CollectionViewSource.GetDefaultView(InventoryItems).Filter = MatchesModFilter;
         RestoreLastInstance();
         RestoreLastProfile();
@@ -255,6 +256,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand BrowseGameRootCommand { get; }
     public ICommand BrowseManagerDataCommand { get; }
     public ICommand PurgeCommand { get; }
+
+    public ICommand SettingsCommand { get; }
 
     public void RepairOnStart()
     {
@@ -1488,6 +1491,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IsBusy = false;
             CommandManager.InvalidateRequerySuggested();
         }
+    }
+
+    private void OpenSettings()
+    {
+        var owner = System.Windows.Application.Current?.MainWindow;
+        var dialog = new SettingsDialog(this);
+        if (owner is not null)
+        {
+            dialog.Owner = owner;
+        }
+
+        dialog.ShowDialog();
     }
 
     private bool MatchesModFilter(object item)

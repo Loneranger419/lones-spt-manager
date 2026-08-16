@@ -39,6 +39,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox Grid.Column="1"
@@ -53,7 +54,13 @@
                            FontWeight="SemiBold"
                            FontSize="16"
                            VerticalAlignment="Center"
-                           HorizontalAlignment="Right" />
+                           HorizontalAlignment="Right"
+                           Margin="0,0,10,0" />
+                <Button Grid.Column="5"
+                        Content="Settings"
+                        Width="80"
+                        Height="26"
+                        Command="{Binding SettingsCommand}" />
             </Grid>
         </Border>
 
@@ -132,7 +139,18 @@
                                            RenderOptions.BitmapScalingMode="HighQuality" />
                                 </Grid>
                                 <StackPanel Grid.Column="3" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsDimmed}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                                        <Setter Property="FontWeight" Value="Normal" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                     <TextBlock Text="{Binding Subtitle}"
                                                Foreground="{DynamicResource MutedBrush}"
                                                FontSize="11" />
@@ -153,11 +171,6 @@
                         <Button DockPanel.Dock="Right" Content="Browse" Width="72" Height="26" Margin="6,0,0,0" Command="{Binding BrowseGameRootCommand}" />
                         <TextBox Text="{Binding GameRoot, UpdateSourceTrigger=PropertyChanged}" />
                     </DockPanel>
-                    <TextBlock Text="Manager data" Foreground="{DynamicResource MutedBrush}" />
-                    <DockPanel Margin="0,2,0,8">
-                        <Button DockPanel.Dock="Right" Content="Browse" Width="72" Height="26" Margin="6,0,0,0" Command="{Binding BrowseManagerDataCommand}" />
-                        <TextBox Text="{Binding ManagerData, UpdateSourceTrigger=PropertyChanged}" />
-                    </DockPanel>
 
                     <TextBlock FontWeight="SemiBold" Margin="0,8,0,8" Text="Launch" />
                     <TextBlock Text="Mode" Foreground="{DynamicResource MutedBrush}" />
@@ -174,10 +187,6 @@
                         <Button Content="Import zip" Height="30" Margin="0,0,4,4" Command="{Binding ImportZipCommand}" />
                         <Button Content="Repair" Height="30" Margin="4,0,0,4" Command="{Binding RepairCommand}" />
                     </UniformGrid>
-                    <Button Content="Purge manager data"
-                            Height="30"
-                            Margin="0,0,0,8"
-                            Command="{Binding PurgeCommand}" />
                 </StackPanel>
 
                 <TabControl>

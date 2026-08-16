@@ -41,7 +41,7 @@ AI coding tools wrote a large part of this app. That is why it is not on The For
 
 ### Remove it
 
-1. In the app, **Purge manager data** if you want the junctions and cached mods gone. That does **not** delete your SPT install.
+1. In the app, **Settings → Purge manager data** if you want the junctions and cached mods gone. That does **not** delete your SPT install.
 2. Close the app and delete `LonesSptManager.exe` (and the folder you extracted).
 3. Optional: delete `%AppData%\LonesSptManager`.
 
@@ -79,7 +79,7 @@ The last profile you used is selected again next time.
 
 ### Overwrite
 
-After Harvest, extra files land on the **Overwrite** tab. Configs that belong to a mod are attached to that mod for this profile. Greyer rows are generated/state files that stay in Overwrite. You can **Assign to mod**, **Discard file**, or **Discard all Overwrite**.
+After Harvest, extra files land on the **Overwrite** tab. Configs that belong to a mod are attached to that mod for this profile — including F12 BepInEx `.cfg` files matched by plugin folder or DLL name when the Forge GUID is missing. Greyer rows are generated/state files that stay in Overwrite. You can **Assign to mod**, **Discard file**, or **Discard all Overwrite**.
 
 ### Already-modded install
 
@@ -87,8 +87,8 @@ If SPT already has real folders in `BepInEx\plugins` or `SPT_Runtime\user\mods`,
 
 ### Other buttons
 
+- **Settings** — theme (follow Windows, Dark, or Light), manager data folder, and **Purge manager data**.
 - **Repair** — fix a stuck or half-applied deploy.
-- **Purge manager data** — wipe this app’s store, profiles, and cache. SPT itself stays.
 
 ---
 
@@ -133,6 +133,9 @@ No. It only removes this manager’s data. Bind again afterward.
 
 **Linux / Steam Deck?**
 Windows only.
+
+**How do I switch dark mode?**
+**Settings** (top right). Theme can follow Windows, or stay Dark / Light. The manager data folder and **Purge manager data** are in the same window. Unchecked mods in the list are greyed out.
 
 ---
 

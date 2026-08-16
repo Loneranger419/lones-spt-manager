@@ -342,6 +342,40 @@ public sealed class ProfileHarvestTests
     }
 
     [Fact]
+    public void Harvest_BepInExCfg_AssignsByPluginFolder_WhenForgeGuidMissing()
+    {
+        using var fx = new DeployFixture();
+        WriteInstall(fx, SptLayout.BepInExConfig + "/BepInEx.cfg", "stock");
+        fx.PutMod("Auto Deposit", "1.0", new Dictionary<string, string>
+        {
+            ["BepInEx/plugins/Tyfon.AutoDeposit/Tyfon.AutoDeposit.dll"] = "dll"
+        });
+        Assert.Equal(
+            DeployStatus.Success,
+            fx.Engine.Deploy(fx.Request(fx.Enable(("Auto Deposit", "1.0", 0)))).Status);
+
+        WriteInstall(fx, SptLayout.BepInExConfig + "/Tyfon.AutoDeposit.cfg", "f12");
+        WriteInstall(
+            fx,
+            "BepInEx/plugins/Tyfon.AutoDeposit/extra-layouts.json",
+            "{ }");
+
+        var harvest = new HarvestEngine(fx.Lock).Harvest(fx.GameRoot, fx.ManagerData, ProfilePaths.DefaultProfileId);
+        Assert.Equal(DeployStatus.Success, harvest.Status);
+        Assert.Contains(harvest.AssignedToMods, file => file.CanonicalPath == "BepInEx/config/Tyfon.AutoDeposit.cfg");
+        Assert.Contains(
+            harvest.AssignedToMods,
+            file => file.CanonicalPath == "BepInEx/plugins/Tyfon.AutoDeposit/extra-layouts.json");
+        Assert.DoesNotContain(
+            harvest.Files,
+            file => file.CanonicalPath.Contains("Tyfon.AutoDeposit", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(ProfileRuntimeStore.TryRead(fx.ManagerData, ProfilePaths.DefaultProfileId, "Auto Deposit"));
+        Assert.DoesNotContain(
+            HarvestEngine.ListOverwrite(fx.ManagerData, ProfilePaths.DefaultProfileId),
+            path => path.Contains("Tyfon.AutoDeposit", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void PromoteOverwriteConfigs_MovesExistingConfigs_LeavesState()
     {
         using var fx = new DeployFixture();
@@ -369,6 +403,28 @@ public sealed class ProfileHarvestTests
         Assert.DoesNotContain(
             HarvestEngine.ListOverwrite(fx.ManagerData, ProfilePaths.DefaultProfileId),
             path => path.Contains("config", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void PromoteOverwriteConfigs_AssignsBepInExCfg_ByPluginFolder()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("Scope Rangefinder", "1.0", new Dictionary<string, string>
+        {
+            ["BepInEx/plugins/maschine-ScopeRangefinder/ScopeRangefinder.dll"] = "dll"
+        });
+
+        var overwrite = ProfilePaths.Overwrite(fx.ManagerData, ProfilePaths.DefaultProfileId);
+        WriteOverwrite(overwrite, "BepInEx/config/com.maschine.ScopeRangefinder.cfg", "f12");
+        WriteOverwrite(overwrite, "BepInEx/plugins/maschine-ScopeRangefinder/ScopeRangefinder.layouts.json", "{ }");
+        WriteOverwrite(overwrite, "BepInEx/config/com.lacyway.ch.cfg", "short");
+
+        var moved = HarvestEngine.PromoteOverwriteConfigs(fx.ManagerData, ProfilePaths.DefaultProfileId);
+        Assert.Equal(2, moved.Count);
+        Assert.NotNull(ProfileRuntimeStore.TryRead(fx.ManagerData, ProfilePaths.DefaultProfileId, "Scope Rangefinder"));
+        Assert.Contains(
+            HarvestEngine.ListOverwrite(fx.ManagerData, ProfilePaths.DefaultProfileId),
+            path => path.Equals("BepInEx/config/com.lacyway.ch.cfg", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
