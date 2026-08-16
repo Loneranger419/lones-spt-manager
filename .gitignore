@@ -1,0 +1,84 @@
+# Build
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+publish/
+TestResults/
+[Cc]overage/
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.rsuser
+*.DotSettings.user
+*.VC.db
+*.VC.opendb
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Publish / click-once / installer leftovers
+*.publishproj
+*.appx
+*.appxbundle
+*.appxupload
+AppPackages/
+BundleArtifacts/
+
+# OS / editor junk
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Secrets and local machine state — never commit
+.env
+.env.*
+*.pfx
+*.p12
+*.key
+*.pem
+credentials.json
+appsettings.*.local.json
+secrets.json
+
+# Manager / SPT runtime that must not land in git
+**/user/profiles/
+**/user/credentials/
+**/user/certs/
+**/cache/forge/
+**/cache/thumbnails/
+**/LonesSptManager/
+*.server.key
+
+# Local launch / debug
+launchSettings.json
+*.log
+
+# Working notes — not published
+PLAN.md
+research/

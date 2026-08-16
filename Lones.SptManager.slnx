@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Lones.SptManager.App/Lones.SptManager.App.csproj" />
+    <Project Path="src/Lones.SptManager.Core/Lones.SptManager.Core.csproj" />
+    <Project Path="src/Lones.SptManager.Forge/Lones.SptManager.Forge.csproj" />
+    <Project Path="src/Lones.SptManager.Native/Lones.SptManager.Native.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Lones.SptManager.Tests/Lones.SptManager.Tests.csproj" />
+  </Folder>
+</Solution>

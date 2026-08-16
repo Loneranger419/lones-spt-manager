@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lones.SptManager.Core\Lones.SptManager.Core.csproj" />
+    <ProjectReference Include="..\Lones.SptManager.Forge\Lones.SptManager.Forge.csproj" />
+    <ProjectReference Include="..\Lones.SptManager.Native\Lones.SptManager.Native.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+</Project>

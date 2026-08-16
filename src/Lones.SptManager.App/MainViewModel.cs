@@ -1,0 +1,1344 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.CompilerServices;
+using System.Windows.Input;
+using Lones.SptManager.Core.Deploy;
+using Lones.SptManager.Core.Instance;
+using Lones.SptManager.Core.Inventory;
+using Lones.SptManager.Core.Launch;
+using Lones.SptManager.Core.Mapping;
+using Lones.SptManager.Core.Profiles;
+using Lones.SptManager.Core.Store;
+using Lones.SptManager.Forge;
+
+namespace Lones.SptManager.App;
+
+public sealed class MainViewModel : INotifyPropertyChanged
+{
+    private string _gameRoot = string.Empty;
+    private string _managerData = InstanceStore.DefaultManagerDataPath;
+    private string _profileId = ProfilePaths.DefaultProfileId;
+    private string _forgeQuery = string.Empty;
+    private string _launchMode = LaunchModes.Solo;
+    private string _joinUrl = string.Empty;
+    private ForgeSearchHit? _selectedForgeHit;
+    private ModRowViewModel? _selectedModRow;
+    private string? _selectedOverwritePath;
+    private string _status = "Pick an SPT 4.1.x game root (folder with EscapeFromTarkov.exe and SPT_Runtime).";
+    private bool _busy;
+    private bool _refreshingProfiles;
+    private bool _hydratingThumbnails;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public MainViewModel()
+    {
+        BindCommand = new RelayCommand(Bind, () => !_busy && !string.IsNullOrWhiteSpace(GameRoot));
+        ImportZipCommand = new RelayCommand(ImportZip, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
+        DeployCommand = new RelayCommand(Deploy, () => !_busy && !string.IsNullOrWhiteSpace(GameRoot) && !string.IsNullOrWhiteSpace(ManagerData));
+        RepairCommand = new RelayCommand(Repair, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
+        HarvestCommand = new RelayCommand(Harvest, () => !_busy && !string.IsNullOrWhiteSpace(GameRoot) && !string.IsNullOrWhiteSpace(ManagerData));
+        AddProfileCommand = new RelayCommand(AddProfile, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
+        EditProfileCommand = new RelayCommand(EditProfile, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData) && !string.IsNullOrWhiteSpace(ProfileId));
+        DiscardOverwriteCommand = new RelayCommand(DiscardOverwrite, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
+        SearchForgeCommand = new RelayCommand(SearchForge, () => !_busy && !string.IsNullOrWhiteSpace(ForgeQuery));
+        InstallForgeCommand = new RelayCommand(InstallForge, () => !_busy && SelectedForgeHit is not null && !string.IsNullOrWhiteSpace(ManagerData));
+        CheckUpdatesCommand = new RelayCommand(CheckUpdates, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
+        LaunchCommand = new RelayCommand(Launch, () => !_busy && !string.IsNullOrWhiteSpace(GameRoot));
+        EnableModCommand = new RelayCommand(() => ToggleSelected(true), () => !_busy && SelectedInventoryItem is { Kind: InstallInventory.StoreKind });
+        DisableModCommand = new RelayCommand(() => ToggleSelected(false), () => !_busy && SelectedInventoryItem is { Kind: InstallInventory.StoreKind, Enabled: true });
+        PriorityUpCommand = new RelayCommand(() => MoveSelected(-1), () => !_busy && SelectedInventoryItem is { Kind: InstallInventory.StoreKind });
+        PriorityDownCommand = new RelayCommand(() => MoveSelected(1), () => !_busy && SelectedInventoryItem is { Kind: InstallInventory.StoreKind });
+        ImportLeftoverCommand = new RelayCommand(ImportLeftover, () => !_busy && SelectedInventoryItem is { Kind: InstallInventory.LeftoverKind, InstallRelative: not null } && !string.IsNullOrWhiteSpace(GameRoot));
+        CopyRuntimeCommand = new RelayCommand(CopyRuntimeToProfile, () =>
+            !_busy
+            && SelectedInventoryItem is { Kind: InstallInventory.StoreKind, RuntimeFileCount: > 0 }
+            && OtherProfileIds().Count > 0);
+        DiscardSelectedOverwriteCommand = new RelayCommand(DiscardSelectedOverwrite, () => !_busy && SelectedOverwritePath is not null);
+        AssignOverwriteCommand = new RelayCommand(AssignOverwrite, () => !_busy && SelectedOverwritePath is not null && SelectedInventoryItem is { Kind: InstallInventory.StoreKind, Version: not null });
+        BrowseGameRootCommand = new RelayCommand(BrowseGameRoot);
+        BrowseManagerDataCommand = new RelayCommand(BrowseManagerData);
+        PurgeCommand = new RelayCommand(Purge, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
+        RestoreLastInstance();
+        RefreshProfiles();
+        RefreshInventory();
+    }
+
+    public string GameRoot
+    {
+        get => _gameRoot;
+        set
+        {
+            if (Set(ref _gameRoot, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+                RefreshInventory();
+            }
+        }
+    }
+
+    public string ManagerData
+    {
+        get => _managerData;
+        set
+        {
+            if (Set(ref _managerData, value))
+            {
+                RefreshProfiles();
+                RefreshInventory();
+            }
+        }
+    }
+
+    public string ProfileId
+    {
+        get => _profileId;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value) || !Set(ref _profileId, value))
+            {
+                return;
+            }
+
+            if (_refreshingProfiles)
+            {
+                return;
+            }
+
+            LoadProfileLaunchSettings();
+            RefreshInventory();
+            ApplySelectedProfile();
+        }
+    }
+
+    public string ForgeQuery
+    {
+        get => _forgeQuery;
+        set
+        {
+            if (Set(ref _forgeQuery, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public string LaunchMode
+    {
+        get => _launchMode;
+        set => Set(ref _launchMode, value);
+    }
+
+    public string JoinUrl
+    {
+        get => _joinUrl;
+        set => Set(ref _joinUrl, value);
+    }
+
+    public IReadOnlyList<string> LaunchModeChoices { get; } = [LaunchModes.Solo, LaunchModes.FikaHost, LaunchModes.FikaClient];
+
+    public ObservableCollection<string> ProfileIds { get; } = [];
+
+    public ObservableCollection<ModRowViewModel> InventoryItems { get; } = [];
+
+    public ObservableCollection<string> OverwriteItems { get; } = [];
+
+    public string? SelectedOverwritePath
+    {
+        get => _selectedOverwritePath;
+        set
+        {
+            if (Set(ref _selectedOverwritePath, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public ModRowViewModel? SelectedModRow
+    {
+        get => _selectedModRow;
+        set
+        {
+            if (Set(ref _selectedModRow, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public InventoryItem? SelectedInventoryItem => SelectedModRow?.Item;
+
+    public ObservableCollection<ForgeSearchHit> ForgeHits { get; } = [];
+
+    public ForgeSearchHit? SelectedForgeHit
+    {
+        get => _selectedForgeHit;
+        set
+        {
+            if (Set(ref _selectedForgeHit, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public string Status
+    {
+        get => _status;
+        set => Set(ref _status, value);
+    }
+
+    public ICommand BindCommand { get; }
+    public ICommand ImportZipCommand { get; }
+    public ICommand DeployCommand { get; }
+    public ICommand RepairCommand { get; }
+    public ICommand HarvestCommand { get; }
+    public ICommand AddProfileCommand { get; }
+    public ICommand EditProfileCommand { get; }
+    public ICommand DiscardOverwriteCommand { get; }
+    public ICommand SearchForgeCommand { get; }
+    public ICommand InstallForgeCommand { get; }
+    public ICommand CheckUpdatesCommand { get; }
+    public ICommand LaunchCommand { get; }
+    public ICommand EnableModCommand { get; }
+    public ICommand DisableModCommand { get; }
+    public ICommand PriorityUpCommand { get; }
+    public ICommand PriorityDownCommand { get; }
+    public ICommand ImportLeftoverCommand { get; }
+    public ICommand CopyRuntimeCommand { get; }
+    public ICommand DiscardSelectedOverwriteCommand { get; }
+    public ICommand AssignOverwriteCommand { get; }
+    public ICommand BrowseGameRootCommand { get; }
+    public ICommand BrowseManagerDataCommand { get; }
+    public ICommand PurgeCommand { get; }
+
+    public void RepairOnStart()
+    {
+        if (string.IsNullOrWhiteSpace(ManagerData) || !Directory.Exists(ManagerData))
+        {
+            return;
+        }
+
+        var result = new DeployEngine().ReconcileAll(ManagerData);
+        if (result.Status is DeployStatus.Recovered or DeployStatus.Failed)
+        {
+            Status = result.Message ?? result.Status.ToString();
+        }
+
+        RefreshProfiles();
+        RefreshInventory();
+    }
+
+    private void BrowseGameRoot()
+    {
+        var picked = FolderPicker.Pick("Select SPT 4.1 game root", GameRoot);
+        if (picked is not null)
+        {
+            GameRoot = picked;
+        }
+    }
+
+    private void BrowseManagerData()
+    {
+        var picked = FolderPicker.Pick("Select manager data folder", ManagerData);
+        if (picked is not null)
+        {
+            ManagerData = picked;
+        }
+    }
+
+    private void Purge()
+    {
+        var owner = System.Windows.Application.Current?.MainWindow;
+        var confirm = System.Windows.MessageBox.Show(
+            owner,
+            "This deletes ALL manager data: the mod store, profiles, saves, BepInEx configs, Overwrite, and cache.\n\n"
+            + "The SPT game folder stays. Manager junctions are removed from it.\n\n"
+            + "This cannot be undone.",
+            "Purge manager data",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+        if (confirm != System.Windows.MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _busy = true;
+        _hydratingThumbnails = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            ReleaseManagerFileLocks();
+            var result = ManagerPurge.Run(ManagerData, string.IsNullOrWhiteSpace(GameRoot) ? null : GameRoot);
+            Status = result.Message ?? (result.Success ? "Purged." : "Purge failed.");
+            if (result.Success)
+            {
+                ResetUiAfterPurge();
+            }
+            else
+            {
+                RefreshProfiles();
+                RefreshInventory();
+            }
+
+            System.Windows.MessageBox.Show(
+                owner,
+                Status,
+                result.Success ? "Purged" : "Purge failed",
+                System.Windows.MessageBoxButton.OK,
+                result.Success ? System.Windows.MessageBoxImage.Information : System.Windows.MessageBoxImage.Error);
+        }
+        catch (Exception ex)
+        {
+            Status = "Purge failed: " + ex.Message;
+            RefreshProfiles();
+            RefreshInventory();
+            System.Windows.MessageBox.Show(
+                owner,
+                Status,
+                "Purge failed",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            _hydratingThumbnails = false;
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void ReleaseManagerFileLocks()
+    {
+        InventoryItems.Clear();
+        SelectedModRow = null;
+        ForgeHits.Clear();
+        SelectedForgeHit = null;
+        OverwriteItems.Clear();
+        System.Windows.Application.Current?.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
+
+    private void ResetUiAfterPurge()
+    {
+        _refreshingProfiles = true;
+        try
+        {
+            ForgeHits.Clear();
+            SelectedForgeHit = null;
+            OverwriteItems.Clear();
+            InventoryItems.Clear();
+            ProfileIds.Clear();
+            ProfileIds.Add(ProfilePaths.DefaultProfileId);
+            _profileId = ProfilePaths.DefaultProfileId;
+            LaunchMode = LaunchModes.Solo;
+            JoinUrl = string.Empty;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProfileId)));
+        }
+        finally
+        {
+            _refreshingProfiles = false;
+        }
+
+        RefreshInventory();
+    }
+
+    private void ImportZip()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Mod archives (*.zip;*.7z)|*.zip;*.7z|All files (*.*)|*.*",
+            Title = "Import mod archive into the store"
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var result = new InstallMapper().ImportArchive(dialog.FileName, ManagerData);
+            Status = result.Message ?? "Import finished.";
+            if (result.Map.Warnings.Count > 0)
+            {
+                Status += Environment.NewLine + string.Join(Environment.NewLine, result.Map.Warnings);
+            }
+
+            if (result.Document is not null)
+            {
+                Status += Environment.NewLine + "Store: " + ModStorePath(result.Document.ModKey, result.Document.Version);
+                AddImportedToProfile(result.Document);
+            }
+
+            RefreshInventory();
+        }
+        catch (Exception ex)
+        {
+            Status = "Import failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private string ModStorePath(string modKey, string version)
+        => ModStore.PackageDirectory(ManagerData, modKey, version);
+
+    private void ApplySelectedProfile()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(GameRoot) || string.IsNullOrWhiteSpace(ManagerData))
+        {
+            return;
+        }
+
+        Deploy();
+        Status = "Switched to profile " + ProfileId + "." + Environment.NewLine + Status;
+    }
+
+    private void Deploy()
+    {
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var baseline = Directory.Exists(GameRoot) ? new SptOwnedBaselineBuilder().Build(GameRoot) : null;
+            var result = new DeployEngine().Deploy(new DeployRequest
+            {
+                GameRoot = GameRoot,
+                ManagerData = ManagerData,
+                ProfileId = ProfileId,
+                Baseline = baseline
+            });
+            Status = result.Message ?? result.Status.ToString();
+            if (result.Conflicts.Count > 0)
+            {
+                Status += Environment.NewLine + "Overlay conflicts (higher priority won):";
+                foreach (var conflict in result.Conflicts)
+                {
+                    Status += Environment.NewLine + $"  {conflict.CanonicalPath}: {conflict.WinnerModKey} over {conflict.LoserModKey}";
+                }
+            }
+
+            RefreshInventory();
+        }
+        catch (Exception ex)
+        {
+            Status = "Deploy failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void Repair()
+    {
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var result = new DeployEngine().ReconcileAll(ManagerData);
+            Status = result.Message ?? result.Status.ToString();
+        }
+        catch (Exception ex)
+        {
+            Status = "Repair failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void Harvest()
+    {
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var baseline = Directory.Exists(GameRoot) ? new SptOwnedBaselineBuilder().Build(GameRoot) : null;
+            var result = new HarvestEngine().Harvest(GameRoot, ManagerData, ProfileId, baseline);
+            Status = result.Message ?? result.Status.ToString();
+            var listed = HarvestEngine.ListOverwrite(ManagerData, ProfileId);
+            RefreshOverwrite();
+            if (listed.Count > 0)
+            {
+                Status += Environment.NewLine + "Overwrite:";
+                foreach (var path in listed.Take(20))
+                {
+                    Status += Environment.NewLine + "  " + path;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = "Harvest failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void AddProfile()
+    {
+        var owner = System.Windows.Application.Current?.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        var result = ProfileDialog.ShowAdd(owner, ProfilePaths.ListProfileIds(ManagerData));
+        if (result.Action != ProfileDialogAction.Accept || string.IsNullOrWhiteSpace(result.Name))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.PackSource))
+        {
+            _ = InstallPackProfileAsync(result.Name, result.PackSource);
+            return;
+        }
+
+        if (result.CopyFromId is not null)
+        {
+            var copied = ProfileCopier.Copy(ManagerData, result.CopyFromId, result.Name, result.Options);
+            Status = copied.Message ?? (copied.Success ? "Copied." : "Copy failed.");
+            if (!copied.Success || copied.DestinationId is null)
+            {
+                return;
+            }
+
+            RefreshProfiles();
+            ProfileId = copied.DestinationId;
+            return;
+        }
+
+        new ProfileStore().LoadOrCreate(ManagerData, result.Name);
+        RefreshProfiles();
+        ProfileId = ProfilePaths.Sanitize(result.Name);
+        Status = "Created profile " + ProfileId + ".";
+    }
+
+    private async Task InstallPackProfileAsync(string name, string packSource)
+    {
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        var created = new ProfileStore().LoadOrCreate(ManagerData, name);
+        var id = created.ProfileId;
+        var owner = System.Windows.Application.Current?.MainWindow;
+        var dialog = owner is null ? null : new ProgressDialog("Installing pack — " + id) { Owner = owner };
+        using var cts = new CancellationTokenSource();
+        if (dialog is not null)
+        {
+            dialog.CancelRequested += () => cts.Cancel();
+            dialog.Show();
+        }
+
+        try
+        {
+            Status = "Installing pack into " + id + "…";
+            using var client = new ForgeClient();
+            using var installer = new ModPackInstaller(client);
+            var progress = new Progress<ModPackProgress>(update =>
+            {
+                Status = update.Message;
+                dialog?.Update(update);
+            });
+            var result = await installer.InstallAsync(packSource, ManagerData, id, progress: progress, cancellationToken: cts.Token)
+                .ConfigureAwait(true);
+            var packStatus = result.Message ?? (result.Success ? "Pack installed." : "Pack install failed.");
+            if (result.Warnings.Count > 0)
+            {
+                packStatus += Environment.NewLine + string.Join(Environment.NewLine, result.Warnings);
+            }
+
+            SelectProfileWithoutDeploy(id);
+            if (!string.IsNullOrWhiteSpace(GameRoot) && Directory.Exists(GameRoot))
+            {
+                Deploy();
+                Status = packStatus + Environment.NewLine + Status;
+            }
+            else
+            {
+                RefreshInventory();
+                Status = packStatus;
+            }
+        }
+        catch (Exception ex)
+        {
+            SelectProfileWithoutDeploy(id);
+            RefreshInventory();
+            Status = "Pack install failed: " + ex.Message;
+        }
+        finally
+        {
+            if (dialog is not null)
+            {
+                try
+                {
+                    dialog.MarkFinished();
+                    if (dialog.IsVisible)
+                    {
+                        dialog.Close();
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // Already closed by Cancel.
+                }
+            }
+
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void SelectProfileWithoutDeploy(string id)
+    {
+        _refreshingProfiles = true;
+        try
+        {
+            var ids = ProfilePaths.ListProfileIds(ManagerData).ToList();
+            if (!ids.Contains(id, StringComparer.OrdinalIgnoreCase))
+            {
+                ids.Add(id);
+            }
+
+            ProfileIds.Clear();
+            foreach (var item in ids.OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
+            {
+                ProfileIds.Add(item);
+            }
+
+            _profileId = id;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProfileId)));
+        }
+        finally
+        {
+            _refreshingProfiles = false;
+        }
+    }
+
+    private void EditProfile()
+    {
+        var owner = System.Windows.Application.Current?.MainWindow;
+        if (owner is null)
+        {
+            return;
+        }
+
+        var result = ProfileDialog.ShowEdit(owner, ProfileId);
+        if (result.Action == ProfileDialogAction.Delete)
+        {
+            DeleteCurrentProfile();
+            return;
+        }
+
+        if (result.Action is ProfileDialogAction.Cancel || string.IsNullOrWhiteSpace(result.Name))
+        {
+            return;
+        }
+
+        if (result.Action == ProfileDialogAction.Copy)
+        {
+            var copied = ProfileCopier.Copy(ManagerData, ProfileId, result.Name);
+            Status = copied.Message ?? (copied.Success ? "Copied." : "Copy failed.");
+            if (copied.Success && copied.DestinationId is not null)
+            {
+                RefreshProfiles();
+                ProfileId = copied.DestinationId;
+            }
+
+            return;
+        }
+
+        var renamed = ProfileStore.Rename(ManagerData, ProfileId, result.Name);
+        Status = renamed.Message ?? (renamed.Success ? "Renamed." : "Rename failed.");
+        if (renamed.Success && renamed.DestinationId is not null)
+        {
+            RefreshProfiles();
+            ProfileId = renamed.DestinationId;
+        }
+    }
+
+    private void DeleteCurrentProfile()
+    {
+        var doomed = ProfileId;
+        var others = ProfileIds
+            .Where(id => !id.Equals(doomed, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (others.Count == 0)
+        {
+            Status = "Can't delete the last profile.";
+            return;
+        }
+
+        var owner = System.Windows.Application.Current?.MainWindow;
+        var confirm = System.Windows.MessageBox.Show(
+            owner,
+            $"Delete profile '{doomed}'?\n\nThis removes that profile's saves, BepInEx configs, Overwrite, and generated files. Mods in the store stay.",
+            "Delete profile",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+        if (confirm != System.Windows.MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var running = new SptProcessLock().RunningSptProcesses();
+        if (running.Count > 0)
+        {
+            Status = "Can't delete a profile while SPT is running: " + string.Join(", ", running);
+            return;
+        }
+
+        var fallback = others[0];
+        SelectProfileWithoutDeploy(fallback);
+        if (!string.IsNullOrWhiteSpace(GameRoot) && Directory.Exists(GameRoot))
+        {
+            Deploy();
+        }
+
+        var deleted = ProfileStore.Delete(ManagerData, doomed);
+        Status = deleted.Message ?? (deleted.Success ? "Deleted." : "Delete failed.");
+        RefreshProfiles();
+        if (deleted.Success)
+        {
+            ProfileId = fallback;
+        }
+        else
+        {
+            RefreshInventory();
+        }
+    }
+
+    private void CopyRuntimeToProfile()
+    {
+        if (SelectedInventoryItem is not { Kind: InstallInventory.StoreKind, RuntimeFileCount: > 0 } item)
+        {
+            return;
+        }
+
+        var others = OtherProfileIds();
+        var owner = System.Windows.Application.Current?.MainWindow;
+        if (owner is null || others.Count == 0)
+        {
+            return;
+        }
+
+        var dest = ChooseProfileDialog.Show(
+            owner,
+            "Copy generated files",
+            "Copy " + item.Key + " generated files from " + ProfileId + " to:",
+            others);
+        if (string.IsNullOrWhiteSpace(dest))
+        {
+            return;
+        }
+
+        var copied = ProfileCopier.CopyRuntimeMod(ManagerData, ProfileId, dest, item.Key);
+        Status = copied.Message ?? (copied.Success ? "Copied." : "Copy failed.");
+    }
+
+    private IReadOnlyList<string> OtherProfileIds()
+        => ProfilePaths.ListProfileIds(ManagerData)
+            .Where(id => !id.Equals(ProfileId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+    private void DiscardOverwrite()
+    {
+        HarvestEngine.DiscardAll(ManagerData, ProfileId);
+        Status = "Cleared Overwrite for profile " + ProfilePaths.Sanitize(ProfileId) + ".";
+        RefreshOverwrite();
+    }
+
+    private void DiscardSelectedOverwrite()
+    {
+        if (SelectedOverwritePath is null)
+        {
+            return;
+        }
+
+        HarvestEngine.DiscardPaths(ManagerData, ProfileId, [SelectedOverwritePath]);
+        Status = "Discarded Overwrite file " + SelectedOverwritePath + ".";
+        RefreshOverwrite();
+    }
+
+    private void AssignOverwrite()
+    {
+        if (SelectedOverwritePath is null
+            || SelectedInventoryItem is not { Kind: InstallInventory.StoreKind, Version: not null } item)
+        {
+            return;
+        }
+
+        try
+        {
+            var assigned = HarvestEngine.AssignToMod(
+                ManagerData,
+                ProfileId,
+                item.Key,
+                item.Version,
+                [SelectedOverwritePath]);
+            InstallInventory.SetEnabled(ManagerData, ProfileId, assigned.Document.ModKey, assigned.PreviousVersion, enabled: false);
+            InstallInventory.SetEnabled(ManagerData, ProfileId, assigned.Document.ModKey, assigned.Document.Version, enabled: true);
+            Status = $"Assigned Overwrite into {assigned.Document.ModKey} {assigned.Document.Version} (left {assigned.PreviousVersion} in the store). Deploy to apply.";
+            RefreshInventory();
+        }
+        catch (Exception ex)
+        {
+            Status = "Assign Overwrite failed: " + ex.Message;
+        }
+    }
+
+    private void ImportLeftover()
+    {
+        if (SelectedInventoryItem is not { Kind: InstallInventory.LeftoverKind, InstallRelative: not null } item)
+        {
+            return;
+        }
+
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var result = new InstallMapper().ImportInstallTree(GameRoot, item.InstallRelative, ManagerData);
+            Status = result.Message ?? "Leftover import finished.";
+            if (result.Map.Warnings.Count > 0)
+            {
+                Status += Environment.NewLine + string.Join(Environment.NewLine, result.Map.Warnings);
+            }
+
+            if (result.Document is not null)
+            {
+                AddImportedToProfile(result.Document);
+            }
+
+            RefreshInventory();
+        }
+        catch (Exception ex)
+        {
+            Status = "Leftover import failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void AddImportedToProfile(ModDocument document)
+    {
+        if (!document.Deployable)
+        {
+            return;
+        }
+
+        InstallInventory.AddToLoadOrder(ManagerData, ProfileId, document.ModKey, document.Version);
+        Status += Environment.NewLine + "Enabled on profile " + ProfilePaths.Sanitize(ProfileId) + " (end of load order).";
+    }
+
+    private void SearchForge()
+    {
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            using var client = new ForgeClient();
+            var mods = client.ListModsAsync(ForgeQuery).GetAwaiter().GetResult();
+            ForgeHits.Clear();
+            foreach (var hit in ForgeClient.ToSearchHits(mods))
+            {
+                ForgeHits.Add(hit);
+            }
+
+            Status = ForgeHits.Count == 0
+                ? "No Forge mods matched."
+                : $"Forge returned {ForgeHits.Count} mod(s). Select one and Install.";
+            _ = CacheForgeThumbnailsAsync(ForgeHits.Select(hit => hit.Thumbnail).ToArray());
+        }
+        catch (Exception ex)
+        {
+            Status = "Forge search failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void InstallForge()
+    {
+        if (SelectedForgeHit is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            using var client = new ForgeClient();
+            var result = new ForgeInstaller(client).InstallAsync(
+                    SelectedForgeHit.ModId,
+                    ManagerData,
+                    ProfileId,
+                    requestedVersion: SelectedForgeHit.Version)
+                .GetAwaiter()
+                .GetResult();
+            Status = result.Message ?? (result.Success ? "Installed." : "Forge install failed.");
+            if (result.Warnings.Count > 0)
+            {
+                Status += Environment.NewLine + string.Join(Environment.NewLine, result.Warnings);
+            }
+
+            RefreshInventory();
+        }
+        catch (Exception ex)
+        {
+            Status = "Forge install failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void CheckUpdates()
+    {
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            using var client = new ForgeClient();
+            Status = new ForgeInstaller(client).CheckUpdatesAsync(ManagerData, "4.1.2").GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Status = "Forge update check failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void Launch()
+    {
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var result = new LaunchEngine().Launch(new LaunchRequest
+            {
+                GameRoot = GameRoot,
+                ManagerData = ManagerData,
+                ProfileId = ProfileId,
+                Mode = LaunchMode,
+                JoinUrl = string.IsNullOrWhiteSpace(JoinUrl) ? null : JoinUrl
+            });
+            Status = result.Message ?? (result.Success ? "Launched." : "Launch failed.");
+            if (result.Warnings.Count > 0)
+            {
+                Status += Environment.NewLine + string.Join(Environment.NewLine, result.Warnings);
+            }
+
+            if (result.Success)
+            {
+                Status += Environment.NewLine + "After you quit the game (and server, if started), click Harvest.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = "Launch failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void RefreshInventory()
+    {
+        var selectedKey = SelectedModRow?.Item.Key;
+        var selectedVersion = SelectedModRow?.Item.Version;
+        if (string.IsNullOrWhiteSpace(ManagerData))
+        {
+            InventoryItems.Clear();
+            return;
+        }
+
+        List<ModRowViewModel> rows;
+        try
+        {
+            var snap = InstallInventory.Scan(
+                string.IsNullOrWhiteSpace(GameRoot) ? null : GameRoot,
+                ManagerData,
+                ProfileId);
+            rows = OrderForModList(snap.Items)
+                .Select(item => new ModRowViewModel(item, ManagerData, OnRowToggled))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Status = "Could not refresh the mod list: " + ex.Message;
+            return;
+        }
+
+        InventoryItems.Clear();
+        foreach (var row in rows)
+        {
+            InventoryItems.Add(row);
+        }
+
+        SelectedModRow = InventoryItems.FirstOrDefault(row =>
+            row.Item.Key == selectedKey
+            && string.Equals(row.Item.Version, selectedVersion, StringComparison.OrdinalIgnoreCase));
+
+        RefreshOverwrite();
+        if (!_hydratingThumbnails && !_busy)
+        {
+            _ = HydrateMissingThumbnailsAsync();
+        }
+    }
+
+    private void RefreshProfiles()
+    {
+        _refreshingProfiles = true;
+        try
+        {
+            var current = ProfileId;
+            var ids = ProfilePaths.ListProfileIds(ManagerData).ToList();
+            if (!string.IsNullOrWhiteSpace(current)
+                && !ids.Contains(current, StringComparer.OrdinalIgnoreCase))
+            {
+                ids.Add(current);
+            }
+
+            if (ids.Count == 0)
+            {
+                ids.Add(ProfilePaths.DefaultProfileId);
+            }
+
+            ProfileIds.Clear();
+            foreach (var id in ids.OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
+            {
+                ProfileIds.Add(id);
+            }
+
+            if (!string.IsNullOrWhiteSpace(current))
+            {
+                _profileId = current;
+            }
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProfileId)));
+        }
+        finally
+        {
+            _refreshingProfiles = false;
+        }
+    }
+
+    private static IEnumerable<InventoryItem> OrderForModList(IReadOnlyList<InventoryItem> items)
+    {
+        var store = items
+            .Where(item => item.Kind == InstallInventory.StoreKind)
+            .OrderBy(item => item.Priority)
+            .ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase);
+        var leftovers = items.Where(item => item.Kind == InstallInventory.LeftoverKind);
+        return store.Concat(leftovers);
+    }
+
+    private async Task HydrateMissingThumbnailsAsync()
+    {
+        var missing = InventoryItems
+            .Select(row => row.Item)
+            .Where(item => item.Kind == InstallInventory.StoreKind
+                           && item.ForgeModId is > 0
+                           && string.IsNullOrWhiteSpace(item.ThumbnailUrl))
+            .GroupBy(item => item.ForgeModId!.Value)
+            .Select(group => group.First())
+            .ToArray();
+        if (missing.Length == 0 || string.IsNullOrWhiteSpace(ManagerData) || _hydratingThumbnails)
+        {
+            return;
+        }
+
+        _hydratingThumbnails = true;
+        try
+        {
+            using var client = new ForgeClient();
+            var changed = false;
+            foreach (var item in missing)
+            {
+                try
+                {
+                    var details = await client.GetModAsync(item.ForgeModId!.Value).ConfigureAwait(true);
+                    if (!ThumbnailCache.IsAllowedUrl(details?.Thumbnail))
+                    {
+                        continue;
+                    }
+
+                    foreach (var document in ModStore.List(ManagerData)
+                                 .Where(doc => doc.ForgeModId == item.ForgeModId))
+                    {
+                        ThumbnailCache.WriteModJsonThumbnail(ManagerData, document, details!.Thumbnail!);
+                        changed = true;
+                    }
+
+                    await CacheOneThumbnailAsync(client, details!.Thumbnail!).ConfigureAwait(true);
+                }
+                catch (Exception)
+                {
+                    // One missing catalogue row must not stop the rest.
+                }
+            }
+
+            if (changed)
+            {
+                RefreshInventory();
+            }
+        }
+        catch (Exception)
+        {
+            // Catalogue lookup is best-effort.
+        }
+        finally
+        {
+            _hydratingThumbnails = false;
+        }
+    }
+
+    private async Task CacheForgeThumbnailsAsync(IReadOnlyList<string?> urls)
+    {
+        if (string.IsNullOrWhiteSpace(ManagerData))
+        {
+            return;
+        }
+
+        try
+        {
+            using var client = new ForgeClient();
+            foreach (var url in urls.Where(ThumbnailCache.IsAllowedUrl).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                await CacheOneThumbnailAsync(client, url!).ConfigureAwait(true);
+            }
+        }
+        catch (Exception)
+        {
+            // Search still works without cached thumbs.
+        }
+    }
+
+    private async Task CacheOneThumbnailAsync(ForgeClient client, string url)
+    {
+        var dest = ThumbnailCache.LocalPathFor(ManagerData, url);
+        if (File.Exists(dest))
+        {
+            return;
+        }
+
+        await client.DownloadAsync(url, dest, expectedContentLength: null).ConfigureAwait(true);
+    }
+
+    private void OnRowToggled(ModRowViewModel row, bool enabled)
+    {
+        if (row.Item.Version is null)
+        {
+            row.SyncChecked(!enabled);
+            return;
+        }
+
+        SelectedModRow = row;
+        ToggleSelected(enabled);
+    }
+
+    private void RefreshOverwrite()
+    {
+        OverwriteItems.Clear();
+        if (string.IsNullOrWhiteSpace(ManagerData) || string.IsNullOrWhiteSpace(ProfileId))
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var path in HarvestEngine.ListOverwrite(ManagerData, ProfileId))
+            {
+                OverwriteItems.Add(path);
+            }
+        }
+        catch (Exception)
+        {
+            // Listing must not break harvest.
+        }
+    }
+
+    private void RestoreLastInstance()
+    {
+        if (string.IsNullOrWhiteSpace(ManagerData) || !string.IsNullOrWhiteSpace(GameRoot))
+        {
+            return;
+        }
+
+        var latest = InstanceStore.TryLatest(ManagerData);
+        if (latest is not null && Directory.Exists(latest.GameRoot))
+        {
+            _gameRoot = latest.GameRoot;
+        }
+    }
+
+    private void ToggleSelected(bool enabled)
+    {
+        if (SelectedInventoryItem is not { Kind: InstallInventory.StoreKind, Version: not null } item)
+        {
+            return;
+        }
+
+        InstallInventory.SetEnabled(ManagerData, ProfileId, item.Key, item.Version, enabled);
+        RefreshInventory();
+        Status = (enabled ? "Enabled " : "Disabled ") + item.Key + " " + item.Version + ". Deploy to apply.";
+    }
+
+    private void MoveSelected(int delta)
+    {
+        if (SelectedInventoryItem is not { Kind: InstallInventory.StoreKind, Version: not null } item)
+        {
+            return;
+        }
+
+        InstallInventory.MovePriority(ManagerData, ProfileId, item.Key, item.Version, delta);
+        RefreshInventory();
+        Status = "Changed load order for " + item.Key + ". Deploy to apply.";
+    }
+
+    public void ReorderLoadOrder(ModRowViewModel source, ModRowViewModel target, bool after)
+    {
+        if (_busy
+            || source.Item.Kind != InstallInventory.StoreKind
+            || source.Item.Version is null
+            || string.IsNullOrWhiteSpace(ManagerData))
+        {
+            return;
+        }
+
+        var dest = target;
+        var insertAfter = after;
+        if (target.Item.Kind != InstallInventory.StoreKind || target.Item.Version is null)
+        {
+            dest = InventoryItems.LastOrDefault(row => row.Item.Kind == InstallInventory.StoreKind);
+            insertAfter = true;
+        }
+
+        if (dest is null || dest.Item.Version is null || ReferenceEquals(source, dest))
+        {
+            return;
+        }
+
+        InstallInventory.MoveTo(
+            ManagerData,
+            ProfileId,
+            source.Item.Key,
+            source.Item.Version,
+            dest.Item.Key,
+            dest.Item.Version,
+            insertAfter);
+        RefreshInventory();
+        Status = "Changed load order for " + source.Item.Key + ". Deploy to apply.";
+    }
+
+    private void LoadProfileLaunchSettings()
+    {
+        if (string.IsNullOrWhiteSpace(ManagerData) || string.IsNullOrWhiteSpace(ProfileId))
+        {
+            return;
+        }
+
+        var profile = new ProfileStore().TryRead(ManagerData, ProfileId);
+        if (profile is null)
+        {
+            return;
+        }
+
+        LaunchMode = profile.LaunchMode;
+        if (!string.IsNullOrWhiteSpace(profile.JoinUrl))
+        {
+            JoinUrl = profile.JoinUrl;
+        }
+    }
+
+    private void Bind()
+    {
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var binder = new SptInstanceBinder();
+            var result = binder.Bind(GameRoot);
+            if (!result.IsSuccess)
+            {
+                Status = result.Message ?? result.Status.ToString();
+                if (result.MissingPaths.Count > 0)
+                {
+                    Status += Environment.NewLine + "Missing: " + string.Join(", ", result.MissingPaths);
+                }
+
+                return;
+            }
+
+            var baseline = new SptOwnedBaselineBuilder().Build(result.GameRoot);
+            var document = new InstanceStore().Save(ManagerData, result, baseline);
+            Status = result.Message
+                     + Environment.NewLine
+                     + $"Instance {document.InstanceId} saved. SPT-owned baseline files: {baseline.Files.Count}."
+                     + Environment.NewLine
+                     + $"user\\mods present: {result.HasUserModsDirectory}; user\\launcher\\config.json present: {result.HasUserLauncherConfig}.";
+            if (!string.Equals(document.GameRootVolumeId, document.ManagerDataVolumeId, StringComparison.OrdinalIgnoreCase)
+                && document.GameRootVolumeId is not null
+                && document.ManagerDataVolumeId is not null)
+            {
+                Status += Environment.NewLine
+                          + "Store and game are on different volumes. Directory overlays still use junctions; any leftover loose files are copied.";
+            }
+
+            RefreshInventory();
+        }
+        catch (Exception ex)
+        {
+            Status = "Bind failed: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
+
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        return true;
+    }
+}
