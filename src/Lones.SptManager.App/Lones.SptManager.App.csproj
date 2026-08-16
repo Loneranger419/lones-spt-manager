@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Lones.SptManager.Core\Lones.SptManager.Core.csproj" />
     <ProjectReference Include="..\Lones.SptManager.Forge\Lones.SptManager.Forge.csproj" />
     <ProjectReference Include="..\Lones.SptManager.Native\Lones.SptManager.Native.csproj" />
+    <Content Include="..\..\mods.json.example" Link="mods.json.example" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

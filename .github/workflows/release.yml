@@ -37,7 +37,9 @@ jobs:
 
       - name: Zip
         shell: pwsh
-        run: Compress-Archive -Path publish\* -DestinationPath LonesSptManager-win-x64.zip
+        run: |
+          Copy-Item -Force mods.json.example publish/mods.json.example
+          Compress-Archive -Path publish\* -DestinationPath LonesSptManager-win-x64.zip
 
       - uses: actions/upload-artifact@v4
         with:
@@ -52,3 +54,4 @@ jobs:
           files: |
             LonesSptManager-win-x64.zip
             publish/LonesSptManager.exe
+            mods.json.example

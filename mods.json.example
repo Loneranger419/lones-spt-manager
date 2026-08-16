@@ -1,0 +1,568 @@
+{
+  "mods": [
+    {
+      "id": 2310,
+      "name": "WTT - CommonLib",
+      "slug": "wtt-commonlib",
+      "installedVersion": "3.0.4"
+    },
+    {
+      "id": 1277,
+      "name": "WTT - Head and Voice Selector",
+      "slug": "wtt-head-and-voice-selector",
+      "installedVersion": "1.0.8"
+    },
+    {
+      "id": 1342,
+      "name": "UI Fixes",
+      "slug": "ui-fixes",
+      "installedVersion": "6.0.1"
+    },
+    {
+      "id": 1090,
+      "name": "Color Converter API",
+      "slug": "color-converter-api",
+      "installedVersion": "1.1.1"
+    },
+    {
+      "id": 902,
+      "name": "BigBrain",
+      "slug": "bigbrain",
+      "installedVersion": "1.5.0"
+    },
+    {
+      "id": 827,
+      "name": "Waypoints - Expanded Navmesh",
+      "slug": "waypoints-expanded-navmesh",
+      "installedVersion": "1.9.0"
+    },
+    {
+      "id": 2357,
+      "name": "Project Fika - Server",
+      "slug": "project-fika-server",
+      "installedVersion": "2.4.0"
+    },
+    {
+      "id": 2326,
+      "name": "Project Fika",
+      "slug": "project-fika",
+      "installedVersion": "2.4.1"
+    },
+    {
+      "id": 2512,
+      "name": "WTT - Content Backport",
+      "slug": "wtt-content-backport",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2540,
+      "name": "Content Backport - Prestiges",
+      "slug": "content-backport-prestiges",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 1688,
+      "name": "More Energy Drinks",
+      "slug": "more-energy-drinks",
+      "installedVersion": "1.3.0"
+    },
+    {
+      "id": 865,
+      "name": "Gilded Key Storage",
+      "slug": "gilded-key-storage",
+      "installedVersion": "2.1.0"
+    },
+    {
+      "id": 1348,
+      "name": "Scorpion",
+      "slug": "scorpion",
+      "installedVersion": "1.1.1"
+    },
+    {
+      "id": 2747,
+      "name": "Weekend Drops",
+      "slug": "weekend-drops",
+      "installedVersion": "1.0.5"
+    },
+    {
+      "id": 2886,
+      "name": "Operator Traits",
+      "slug": "operator-traits",
+      "installedVersion": "1.0.0"
+    },
+    {
+      "id": 526,
+      "name": "All The Clothes",
+      "slug": "all-the-clothes",
+      "installedVersion": "3.2.0"
+    },
+    {
+      "id": 236,
+      "name": "Server Value Modifier",
+      "slug": "server-value-modifier-svm",
+      "installedVersion": "2.2.1"
+    },
+    {
+      "id": 2689,
+      "name": "Item Property Backport",
+      "slug": "item-property-backport",
+      "installedVersion": "1.5.1"
+    },
+    {
+      "id": 2790,
+      "name": "EasyMounting",
+      "slug": "easymounting",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2480,
+      "name": "BarterItemsStacks",
+      "slug": "barteritemsstacks",
+      "installedVersion": "1.4.0"
+    },
+    {
+      "id": 2524,
+      "name": "Item Limits Begone!",
+      "slug": "item-limits-begone",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 1619,
+      "name": "Lots of Loot Redux",
+      "slug": "lots-of-loot-redux",
+      "installedVersion": "4.2.0"
+    },
+    {
+      "id": 2481,
+      "name": "Crates In Airdrop",
+      "slug": "crates-in-airdrop",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2049,
+      "name": "Add Secret Exfil Notes to Caches",
+      "slug": "add-secret-exfil-notes-to-caches",
+      "installedVersion": "2.1.0"
+    },
+    {
+      "id": 2657,
+      "name": "Cultist Circle Improvements",
+      "slug": "cultist-circle-improvements",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 2526,
+      "name": "Advanced Flea Simulator",
+      "slug": "advanced-flea-simulator",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2371,
+      "name": "FIR Fence Purchases",
+      "slug": "fir-fence-purchases",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 1594,
+      "name": "APBS - Acid's Progressive Bot System",
+      "slug": "apbs-acids-progressive-bot-system",
+      "installedVersion": "2.3.0"
+    },
+    {
+      "id": 2097,
+      "name": "ABPS - Acid's Bot Placement System",
+      "slug": "abps-acids-bot-placement-system",
+      "installedVersion": "2.1.0"
+    },
+    {
+      "id": 2910,
+      "name": "PMC Spawn Toggle",
+      "slug": "pmc-spawn-toggle",
+      "installedVersion": "1.0.1"
+    },
+    {
+      "id": 1873,
+      "name": "Bot Callsigns - Reloaded",
+      "slug": "bot-callsigns-reloaded",
+      "installedVersion": "2.0.5"
+    },
+    {
+      "id": 2506,
+      "name": "Funtar",
+      "slug": "funtar",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2314,
+      "name": "Season Rotator",
+      "slug": "season-rotator",
+      "installedVersion": "2.0.1"
+    },
+    {
+      "id": 2843,
+      "name": "Blackout",
+      "slug": "blackout",
+      "installedVersion": "4.0.0"
+    },
+    {
+      "id": 820,
+      "name": "Door Randomizer",
+      "slug": "door-randomizer",
+      "installedVersion": "1.8.0"
+    },
+    {
+      "id": 2903,
+      "name": "Raids Are Infinite",
+      "slug": "raids-are-infinite",
+      "installedVersion": "1.0.0"
+    },
+    {
+      "id": 2831,
+      "name": "Transits Count",
+      "slug": "transits-count",
+      "installedVersion": "1.1.1"
+    },
+    {
+      "id": 1538,
+      "name": "Ref - SPT Friendly Quests",
+      "slug": "ref-spt-friendly-quests",
+      "installedVersion": "2.1.0"
+    },
+    {
+      "id": 1539,
+      "name": "Bosses Have Lega Medals",
+      "slug": "bosses-have-lega-medals",
+      "installedVersion": "2.1.0"
+    },
+    {
+      "id": 2523,
+      "name": "Bosses Have Gp Coins",
+      "slug": "bosses-have-gp-coins",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 1416,
+      "name": "Default Fire Mode Fixer",
+      "slug": "default-fire-mode-fixer",
+      "installedVersion": "2.1.0"
+    },
+    {
+      "id": 2415,
+      "name": "Canted Aiming",
+      "slug": "canted-aiming",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 1657,
+      "name": "MergeConsumables",
+      "slug": "mergeconsumables",
+      "installedVersion": "1.6.1"
+    },
+    {
+      "id": 2344,
+      "name": "Dynamic Item Weights",
+      "slug": "dynamic-item-weights",
+      "installedVersion": "1.2.0"
+    },
+    {
+      "id": 1853,
+      "name": "StatTrack",
+      "slug": "stattrack",
+      "installedVersion": "2.1.1"
+    },
+    {
+      "id": 2679,
+      "name": "LootNET",
+      "slug": "lootnet",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 1358,
+      "name": "BrightLasers",
+      "slug": "brightlasers",
+      "installedVersion": "3.0.0"
+    },
+    {
+      "id": 2785,
+      "name": "ReceiveAllChats",
+      "slug": "receiveallchats",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 1431,
+      "name": "Dynamic Maps",
+      "slug": "dynamic-maps",
+      "installedVersion": "1.2.1"
+    },
+    {
+      "id": 1533,
+      "name": "More Tag Colours",
+      "slug": "more-tag-colours",
+      "installedVersion": "1.5.0"
+    },
+    {
+      "id": 1745,
+      "name": "Discarder",
+      "slug": "discarder",
+      "installedVersion": "5.0.0"
+    },
+    {
+      "id": 2530,
+      "name": "Vertical Hideout",
+      "slug": "vertical-hideout",
+      "installedVersion": "1.1.1"
+    },
+    {
+      "id": 2221,
+      "name": "BALL - Better Ammo Loading List",
+      "slug": "ball-better-ammo-loading-list",
+      "installedVersion": "1.1.1"
+    },
+    {
+      "id": 2405,
+      "name": "LetMeRightClick",
+      "slug": "letmerightclick",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 1937,
+      "name": "Dev Balaclava Fix",
+      "slug": "dev-balaclava-fix",
+      "installedVersion": "1.2.0"
+    },
+    {
+      "id": 2502,
+      "name": "EOTech Fix",
+      "slug": "eotech-fix",
+      "installedVersion": "1.0.2"
+    },
+    {
+      "id": 2780,
+      "name": "No Barrel Shadow",
+      "slug": "no-barrel-shadow",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2240,
+      "name": "LET ME OUT",
+      "slug": "let-me-out",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 1477,
+      "name": "AutoRun",
+      "slug": "autorun",
+      "installedVersion": "6.0.0"
+    },
+    {
+      "id": 2700,
+      "name": "knife sprint",
+      "slug": "knife-sprint",
+      "installedVersion": "1.0.1"
+    },
+    {
+      "id": 2735,
+      "name": "ScopeRangefinder",
+      "slug": "scoperangefinder",
+      "installedVersion": "3.0.0"
+    },
+    {
+      "id": 2639,
+      "name": "Auto Shoulder Swap",
+      "slug": "auto-shoulder-swap",
+      "installedVersion": "1.1.1"
+    },
+    {
+      "id": 2733,
+      "name": "RaidMenuCleanupFix",
+      "slug": "raidmenucleanupfix",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2553,
+      "name": "Chamber Ammo Info",
+      "slug": "chamber-ammo-info",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 2552,
+      "name": "No Version Label in Raid",
+      "slug": "no-version-label-in-raid",
+      "installedVersion": "1.0.0"
+    },
+    {
+      "id": 2776,
+      "name": "Parmesan - Partizan Rework",
+      "slug": "parmesan-partizan-rework",
+      "installedVersion": "1.0.1"
+    },
+    {
+      "id": 2339,
+      "name": "Preview Sizer",
+      "slug": "preview-sizer",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 2881,
+      "name": "AutoKeycard for Labs",
+      "slug": "autokeycard-for-labs",
+      "installedVersion": "1.0.1"
+    },
+    {
+      "id": 2874,
+      "name": "Adaptive Bot Culling",
+      "slug": "adaptive-bot-culling",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 2824,
+      "name": "TraderSearch",
+      "slug": "tradersearch",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2731,
+      "name": "LinkedSearchInStash",
+      "slug": "linkedsearchinstash",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2861,
+      "name": "REDACTED Redactor",
+      "slug": "redacted-redactor",
+      "installedVersion": "1.0.2"
+    },
+    {
+      "id": 2905,
+      "name": "Ragdoll Kinetics",
+      "slug": "ragdoll-kinetics",
+      "installedVersion": "1.2.0"
+    },
+    {
+      "id": 2729,
+      "name": "NotificationFilter",
+      "slug": "notificationfilter",
+      "installedVersion": "2.0.0"
+    },
+    {
+      "id": 2908,
+      "name": "Tarkin's Hideout Cat",
+      "slug": "tarkins-hideout-cat",
+      "installedVersion": "1.1.1"
+    },
+    {
+      "id": 824,
+      "name": "Task List Fixes",
+      "slug": "task-list-fixes",
+      "installedVersion": "1.8.0"
+    },
+    {
+      "id": 2909,
+      "name": "Task Search",
+      "slug": "task-search",
+      "installedVersion": "1.1.0"
+    },
+    {
+      "id": 2907,
+      "name": "StashFilter",
+      "slug": "stashfilter",
+      "installedVersion": "1.0.0"
+    },
+    {
+      "id": 592,
+      "name": "Amands's Graphics",
+      "slug": "amandss-graphics",
+      "installedVersion": "1.8.0"
+    },
+    {
+      "id": 934,
+      "name": "Search Open Containers",
+      "slug": "search-open-containers",
+      "installedVersion": "1.5.0"
+    },
+    {
+      "id": 1140,
+      "name": "Quest Tracker",
+      "slug": "quest-tracker",
+      "installedVersion": "1.7.0"
+    },
+    {
+      "id": 1298,
+      "name": "HandsAreNotBusy",
+      "slug": "handsarenotbusy",
+      "installedVersion": "1.7.0"
+    },
+    {
+      "id": 1341,
+      "name": "Quick Move To Containers",
+      "slug": "quick-move-to-containers",
+      "installedVersion": "1.5.0"
+    },
+    {
+      "id": 1089,
+      "name": "Kaeno-TraderScrolling",
+      "slug": "kaeno-traderscrolling",
+      "installedVersion": "4.0.0"
+    },
+    {
+      "id": 1884,
+      "name": "Continuous Healing",
+      "slug": "continuous-healing",
+      "installedVersion": "1.6.0"
+    },
+    {
+      "id": 933,
+      "name": "Use Loose Loot",
+      "slug": "use-loose-loot",
+      "installedVersion": "1.6.0"
+    },
+    {
+      "id": 1469,
+      "name": "AutoDeposit",
+      "slug": "autodeposit",
+      "installedVersion": "6.0.0"
+    },
+    {
+      "id": 1374,
+      "name": "Player Encumbrance Bar",
+      "slug": "player-encumbrance-bar",
+      "installedVersion": "1.3.0"
+    },
+    {
+      "id": 2173,
+      "name": "VRAM Cleaner",
+      "slug": "vram-cleaner",
+      "installedVersion": "1.0.3"
+    },
+    {
+      "id": 2521,
+      "name": "Amands' Sense - Updated",
+      "slug": "amands-sense-updated",
+      "installedVersion": "3.1.0"
+    },
+    {
+      "id": 2207,
+      "name": "Fast Sell In Flea",
+      "slug": "fast-sell-in-flea",
+      "installedVersion": "1.3.0"
+    },
+    {
+      "id": 1925,
+      "name": "NerfBotGrenades",
+      "slug": "nerfbotgrenades",
+      "installedVersion": "1.3.0"
+    },
+    {
+      "id": 1249,
+      "name": "Exfil Flare Notification",
+      "slug": "exfil-flare-notification",
+      "installedVersion": "1.0.6"
+    },
+    {
+      "id": 2235,
+      "name": "Sharper Tushonka Better Life",
+      "slug": "sharper-tushonka-better-life",
+      "installedVersion": "1.1.3"
+    }
+  ]
+}
