@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Lones.SptManager.Core.Deploy;
 using Lones.SptManager.Core.Inventory;
 using Lones.SptManager.Core.Paths;
@@ -74,6 +75,84 @@ public sealed class ProfileHarvestTests
         var dest = new ProfileStore().LoadOrCreate(fx.ManagerData, "copied");
         Assert.Contains(dest.Enabled, mod => mod.ModKey == "Keep");
         Assert.False(Directory.Exists(ProfilePaths.Staging(fx.ManagerData, "copied")));
+    }
+
+    [Fact]
+    public void LastUsedProfile_RemembersAndFallsBackToNewestActivity()
+    {
+        using var fx = new DeployFixture();
+        var store = new ProfileStore();
+        store.LoadOrCreate(fx.ManagerData, "older");
+        store.LoadOrCreate(fx.ManagerData, "newer");
+        File.WriteAllText(
+            ProfilePaths.ProfileJson(fx.ManagerData, "older"),
+            JsonSerializer.Serialize(new ProfileDocument
+            {
+                ProfileId = "older",
+                UpdatedAtUtc = DateTimeOffset.UtcNow.AddHours(-2)
+            }, DeployFixture.JsonOptions));
+        File.WriteAllText(
+            ProfilePaths.Manifest(fx.ManagerData, "older"),
+            JsonSerializer.Serialize(new DeployManifest
+            {
+                ProfileId = "older",
+                GameRoot = fx.GameRoot,
+                Fingerprint = "old",
+                WrittenAtUtc = DateTimeOffset.UtcNow.AddHours(-2)
+            }, DeployFixture.JsonOptions));
+        File.WriteAllText(
+            ProfilePaths.Manifest(fx.ManagerData, "newer"),
+            JsonSerializer.Serialize(new DeployManifest
+            {
+                ProfileId = "newer",
+                GameRoot = fx.GameRoot,
+                Fingerprint = "new",
+                WrittenAtUtc = DateTimeOffset.UtcNow
+            }, DeployFixture.JsonOptions));
+
+        Assert.Equal("newer", ProfileStore.TryLastUsedProfileId(fx.ManagerData));
+
+        ProfileStore.RememberLastProfile(fx.ManagerData, "older");
+        Assert.Equal("older", ProfileStore.TryLastUsedProfileId(fx.ManagerData));
+
+        var renamed = ProfileStore.Rename(fx.ManagerData, "older", "renamed");
+        Assert.True(renamed.Success);
+        Assert.Equal("renamed", ProfileStore.TryLastUsedProfileId(fx.ManagerData));
+
+        ProfileStore.Delete(fx.ManagerData, "renamed");
+        Assert.Equal("newer", ProfileStore.TryLastUsedProfileId(fx.ManagerData));
+    }
+
+    [Fact]
+    public void PackSource_IsSavedPreservedOnRenameAndCopied()
+    {
+        using var fx = new DeployFixture();
+        var store = new ProfileStore();
+        store.Save(
+            fx.ManagerData,
+            "alpha",
+            [],
+            packSource: "https://campdegen.com/spt-pack/data/mods.json");
+        Assert.Equal(
+            "https://campdegen.com/spt-pack/data/mods.json",
+            store.TryRead(fx.ManagerData, "alpha")!.PackSource);
+
+        store.Save(fx.ManagerData, "alpha", [new EnabledMod { ModKey = "Keep", Version = "1.0", Priority = 0 }]);
+        Assert.Equal(
+            "https://campdegen.com/spt-pack/data/mods.json",
+            store.TryRead(fx.ManagerData, "alpha")!.PackSource);
+
+        var renamed = ProfileStore.Rename(fx.ManagerData, "alpha", "renamed");
+        Assert.True(renamed.Success);
+        Assert.Equal(
+            "https://campdegen.com/spt-pack/data/mods.json",
+            store.TryRead(fx.ManagerData, "renamed")!.PackSource);
+
+        var copied = ProfileCopier.Copy(fx.ManagerData, "renamed", "copy");
+        Assert.True(copied.Success);
+        Assert.Equal(
+            "https://campdegen.com/spt-pack/data/mods.json",
+            store.TryRead(fx.ManagerData, "copy")!.PackSource);
     }
 
     [Fact]
@@ -225,6 +304,74 @@ public sealed class ProfileHarvestTests
     }
 
     [Fact]
+    public void Harvest_ServerModConfig_GoesToProfileRuntime_GeneratedStaysInOverwrite()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("APBS - Acid's Progressive Bot System", "2.3.0", new Dictionary<string, string>
+        {
+            ["SPT_Runtime/user/mods/acidphantasm-progressivebotsystem/mod.dll"] = "apbs"
+        });
+        Assert.Equal(
+            DeployStatus.Success,
+            fx.Engine.Deploy(fx.Request(fx.Enable(("APBS - Acid's Progressive Bot System", "2.3.0", 0)))).Status);
+
+        WriteInstall(fx, SptLayout.UserMods + "/acidphantasm-progressivebotsystem/config.json", "{ \"pin\": true }");
+        WriteInstall(fx, SptLayout.UserMods + "/acidphantasm-progressivebotsystem/blacklists.json", "[]");
+        WriteInstall(
+            fx,
+            SptLayout.UserMods + "/acidphantasm-progressivebotsystem/GeneratedVanillaMappings-DO_NOT_TOUCH/ArmorVest.json",
+            "{}");
+        WriteInstall(fx, SptLayout.UserMods + "/acidphantasm-progressivebotsystem/state.json", "{ \"season\": 1 }");
+        WriteInstall(fx, SptLayout.UserMods + "/acidphantasm-progressivebotsystem/logs/debug.txt", "log");
+
+        var harvest = new HarvestEngine(fx.Lock).Harvest(fx.GameRoot, fx.ManagerData, ProfilePaths.DefaultProfileId);
+        Assert.Equal(DeployStatus.Success, harvest.Status);
+        Assert.Equal(2, harvest.AssignedToMods.Count);
+        Assert.Contains(harvest.AssignedToMods, file => file.CanonicalPath.EndsWith("/config.json", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(harvest.AssignedToMods, file => file.CanonicalPath.EndsWith("/blacklists.json", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(harvest.Files, file => file.CanonicalPath.Contains("GeneratedVanillaMappings", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(harvest.Files, file => file.CanonicalPath.EndsWith("/state.json", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(harvest.Files, file => file.CanonicalPath.Contains("/logs/", StringComparison.OrdinalIgnoreCase));
+
+        var runtime = ProfileRuntimeStore.TryRead(fx.ManagerData, ProfilePaths.DefaultProfileId, "APBS - Acid's Progressive Bot System");
+        Assert.NotNull(runtime);
+        Assert.Equal(2, runtime.Files.Count);
+        Assert.DoesNotContain(
+            HarvestEngine.ListOverwrite(fx.ManagerData, ProfilePaths.DefaultProfileId),
+            path => path.EndsWith("/config.json", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void PromoteOverwriteConfigs_MovesExistingConfigs_LeavesState()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("Project Fika - Server", "2.4.0", new Dictionary<string, string>
+        {
+            ["SPT_Runtime/user/mods/fika-server/FikaServer.dll"] = "server"
+        });
+        fx.PutMod("Talk", "1.0", new Dictionary<string, string>
+        {
+            ["SPT_Runtime/user/mods/Talk/mod.dll"] = "talk"
+        });
+
+        var overwrite = ProfilePaths.Overwrite(fx.ManagerData, ProfilePaths.DefaultProfileId);
+        WriteOverwrite(overwrite, "SPT_Runtime/user/mods/fika-server/assets/configs/fika.jsonc", "{ }");
+        WriteOverwrite(overwrite, "SPT_Runtime/user/mods/Talk/config.json", "{ \"x\": 1 }");
+        WriteOverwrite(overwrite, "SPT_Runtime/user/mods/Talk/state.json", "{ \"left\": true }");
+
+        var moved = HarvestEngine.PromoteOverwriteConfigs(fx.ManagerData, ProfilePaths.DefaultProfileId);
+        Assert.Equal(2, moved.Count);
+        Assert.NotNull(ProfileRuntimeStore.TryRead(fx.ManagerData, ProfilePaths.DefaultProfileId, "Project Fika - Server"));
+        Assert.NotNull(ProfileRuntimeStore.TryRead(fx.ManagerData, ProfilePaths.DefaultProfileId, "Talk"));
+        Assert.Contains(
+            HarvestEngine.ListOverwrite(fx.ManagerData, ProfilePaths.DefaultProfileId),
+            path => path.EndsWith("/state.json", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            HarvestEngine.ListOverwrite(fx.ManagerData, ProfilePaths.DefaultProfileId),
+            path => path.Contains("config", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Harvest_FikaGeneratedFiles_GoToModRuntime()
     {
         using var fx = new DeployFixture();
@@ -335,6 +482,13 @@ public sealed class ProfileHarvestTests
     private static void WriteInstall(DeployFixture fx, string relative, string contents)
     {
         var path = fx.Install(relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, contents);
+    }
+
+    private static void WriteOverwrite(string overwriteRoot, string relative, string contents)
+    {
+        var path = GamePath.Combine(overwriteRoot, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, contents);
     }

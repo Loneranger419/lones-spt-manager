@@ -7,7 +7,8 @@ public enum ProfileDialogAction
     Cancel = 0,
     Accept = 1,
     Copy = 2,
-    Delete = 3
+    Delete = 3,
+    Update = 4
 }
 
 public sealed class ProfileDialogResult
@@ -30,7 +31,8 @@ public partial class ProfileDialog : System.Windows.Window
         string prompt,
         string initialName,
         bool allowCopy,
-        IReadOnlyList<string>? copyFromIds)
+        IReadOnlyList<string>? copyFromIds,
+        string? packSource = null)
     {
         InitializeComponent();
         Title = title;
@@ -39,6 +41,17 @@ public partial class ProfileDialog : System.Windows.Window
         CopyButton.Visibility = allowCopy ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         DeleteButton.Visibility = allowCopy ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         PackPanel.Visibility = allowCopy ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+        var hasPack = !string.IsNullOrWhiteSpace(packSource);
+        UpdateButton.Visibility = allowCopy && hasPack
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+        SavedPackPanel.Visibility = allowCopy && hasPack
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+        if (hasPack)
+        {
+            SavedPackText.Text = packSource;
+        }
         var sources = copyFromIds ?? [];
         if (sources.Count == 0)
         {
@@ -80,14 +93,18 @@ public partial class ProfileDialog : System.Windows.Window
         return dialog.ToResult();
     }
 
-    public static ProfileDialogResult ShowEdit(System.Windows.Window owner, string currentName)
+    public static ProfileDialogResult ShowEdit(
+        System.Windows.Window owner,
+        string currentName,
+        string? packSource = null)
     {
         var dialog = new ProfileDialog(
             "Edit profile",
             "Rename this profile, copy it, or delete it. Delete removes this profile's saves / configs / Overwrite / generated files. Store mods stay.",
             currentName,
             allowCopy: true,
-            copyFromIds: null)
+            copyFromIds: null,
+            packSource)
         {
             Owner = owner
         };
@@ -182,6 +199,12 @@ public partial class ProfileDialog : System.Windows.Window
         }
 
         Action = ProfileDialogAction.Accept;
+        DialogResult = true;
+    }
+
+    private void Update_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        Action = ProfileDialogAction.Update;
         DialogResult = true;
     }
 

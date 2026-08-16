@@ -82,7 +82,7 @@ public sealed class DeployEngine
         var last = TryReadManifest(ProfilePaths.Manifest(managerData, profileId));
         if (last is not null
             && last.Fingerprint == fingerprint
-            && JunctionsMatch(gameRoot, last)
+                && OverlaysMatch(gameRoot, last)
             && BaselineUntouched(gameRoot, baseline))
         {
             return new DeployResult
@@ -131,7 +131,7 @@ public sealed class DeployEngine
             ApplyOverlays(managerData, profileId, gameRoot, stagingRoot, committed);
             EnsureStockUserDirs(gameRoot, committed);
             Verify(gameRoot, managerData, profileId, stagingRoot, committed, baseline);
-            HarvestEngine.WriteBaseline(managerData, profileId);
+            HarvestEngine.WriteBaseline(managerData, profileId, gameRoot, committed.CopiedFiles);
 
             WriteJson(ProfilePaths.Manifest(managerData, profileId), committed);
             File.Delete(journalPath);
@@ -208,7 +208,7 @@ public sealed class DeployEngine
                 EnsureStockUserDirs(gameRoot, restored);
                 var baseline = new SptOwnedBaselineBuilder().Build(gameRoot);
                 Verify(gameRoot, managerData, profileId, stagingRoot, restored, baseline);
-                HarvestEngine.WriteBaseline(managerData, profileId);
+                HarvestEngine.WriteBaseline(managerData, profileId, gameRoot, restored.CopiedFiles);
                 WriteJson(ProfilePaths.Manifest(managerData, profileId), restored);
             }
             else
@@ -446,7 +446,31 @@ public sealed class DeployEngine
             if (File.Exists(path) && !SptDenylist.IsForbidden(copy.InstallRelative))
             {
                 File.Delete(path);
+                PruneEmptyParents(gameRoot, path);
             }
+        }
+    }
+
+    private static void PruneEmptyParents(string gameRoot, string filePath)
+    {
+        var dir = Path.GetDirectoryName(filePath);
+        while (!string.IsNullOrWhiteSpace(dir)
+               && !SafeFileSystem.SamePath(dir, gameRoot)
+               && Directory.Exists(dir)
+               && !NtfsLinks.IsJunction(dir)
+               && !Directory.EnumerateFileSystemEntries(dir).Any())
+        {
+            var relative = GamePath.Normalize(Path.GetRelativePath(gameRoot, dir));
+            if (SptDenylist.IsForbidden(relative)
+                || GamePath.EqualsNormalized(relative, SptLayout.BepInEx)
+                || GamePath.EqualsNormalized(relative, SptLayout.SptRuntime)
+                || GamePath.EqualsNormalized(relative, SptLayout.EscapeFromTarkovData))
+            {
+                break;
+            }
+
+            Directory.Delete(dir);
+            dir = Path.GetDirectoryName(dir);
         }
     }
 
@@ -554,6 +578,11 @@ public sealed class DeployEngine
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             if (File.Exists(dest))
             {
+                if (string.Equals(HashFile(dest), HashFile(source), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 throw new IOException($"Refusing to overwrite existing file that is not a managed copy: {copy.InstallRelative}");
             }
 
@@ -673,13 +702,24 @@ public sealed class DeployEngine
             }
         }
 
+        foreach (var copy in manifest.CopiedFiles)
+        {
+            var dest = GamePath.Combine(gameRoot, copy.InstallRelative);
+            var source = GamePath.Combine(stagingRoot, copy.InstallRelative);
+            if (!File.Exists(dest) || !File.Exists(source)
+                || !string.Equals(HashFile(dest), HashFile(source), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Copied overlay missing or changed: " + copy.InstallRelative);
+            }
+        }
+
         if (!BaselineUntouched(gameRoot, baseline))
         {
             throw new InvalidOperationException("SPT-owned baseline changed during deploy.");
         }
     }
 
-    private static bool JunctionsMatch(string gameRoot, DeployManifest manifest)
+    private static bool OverlaysMatch(string gameRoot, DeployManifest manifest)
     {
         foreach (var junction in manifest.Junctions)
         {
@@ -691,6 +731,15 @@ public sealed class DeployEngine
 
             var target = NtfsLinks.TryGetJunctionTarget(installPath);
             if (target is null || !SafeFileSystem.SamePath(target, junction.TargetFull))
+            {
+                return false;
+            }
+        }
+
+        foreach (var copy in manifest.CopiedFiles)
+        {
+            var dest = GamePath.Combine(gameRoot, copy.InstallRelative);
+            if (!File.Exists(dest) || !string.Equals(HashFile(dest), copy.Sha256, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }

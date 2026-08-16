@@ -17,6 +17,7 @@ public sealed class InventoryItem
     public string? Note { get; init; }
     public string? InstallRelative { get; init; }
     public string? PackageKind { get; init; }
+    public string? DisplayName { get; init; }
     public string? ThumbnailUrl { get; init; }
     public int? ForgeModId { get; init; }
     public int RuntimeFileCount { get; init; }
@@ -71,6 +72,7 @@ public static class InstallInventory
             var displayVersion = runtimeFiles > 0 && !HarvestRules.IsRuntimeVersion(document.Version)
                 ? $"{document.Version} + runtime"
                 : document.Version;
+            var title = string.IsNullOrWhiteSpace(document.DisplayName) ? document.ModKey : document.DisplayName;
             items.Add(new InventoryItem
             {
                 Kind = StoreKind,
@@ -78,9 +80,10 @@ public static class InstallInventory
                 Version = document.Version,
                 Enabled = isOn,
                 Priority = priority,
-                Display = $"{(isOn ? "on" : "off")}  {priority}  {document.ModKey} {displayVersion}  ({document.Kind})",
+                Display = $"{(isOn ? "on" : "off")}  {priority}  {title} {displayVersion}  ({document.Kind})",
                 Note = explicitEnabled ? null : "All store mods deploy until this profile saves an enabled list.",
                 PackageKind = document.Kind,
+                DisplayName = document.DisplayName,
                 ThumbnailUrl = document.ThumbnailUrl,
                 ForgeModId = document.ForgeModId,
                 RuntimeFileCount = runtimeFiles

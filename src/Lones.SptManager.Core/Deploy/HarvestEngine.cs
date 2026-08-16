@@ -98,10 +98,13 @@ public sealed class HarvestEngine
 
         var known = last.Files.ToDictionary(file => GamePath.Normalize(file.RelativePath), StringComparer.OrdinalIgnoreCase);
         var overwriteRoot = ProfilePaths.Overwrite(managerData, profileId);
+        var store = ModStore.List(managerData).ToArray();
         var harvested = new List<HarvestedFile>();
         var assigned = new List<HarvestedFile>();
+        assigned.AddRange(PromoteOverwriteConfigs(managerData, profileId, store)
+            .Select(path => new HarvestedFile { CanonicalPath = path, Sha256 = string.Empty }));
 
-        foreach (var (canonical, fullPath) in EnumerateHarvestable(managerData, profileId))
+        foreach (var (canonical, fullPath) in EnumerateHarvestable(gameRoot, managerData, profileId))
         {
             if (HarvestRules.ShouldIgnore(canonical, baseline))
             {
@@ -114,7 +117,7 @@ public sealed class HarvestEngine
                 continue;
             }
 
-            var ownerKey = HarvestRules.TryOwnedModKey(canonical);
+            var ownerKey = HarvestRules.TryOwnedModKey(canonical, store);
             if (ownerKey is not null && TryAssignOwnedFile(managerData, profileId, ownerKey, canonical, fullPath, hash))
             {
                 assigned.Add(new HarvestedFile { CanonicalPath = canonical, Sha256 = hash });
@@ -141,10 +144,14 @@ public sealed class HarvestEngine
         };
     }
 
-    public static void WriteBaseline(string managerData, string profileId)
+    public static void WriteBaseline(
+        string managerData,
+        string profileId,
+        string? gameRoot = null,
+        IReadOnlyList<CopiedFileRecord>? copiedFiles = null)
     {
         profileId = ProfilePaths.Sanitize(profileId);
-        var files = EnumerateHarvestable(managerData, profileId)
+        var files = EnumerateHarvestable(gameRoot, managerData, profileId, copiedFiles)
             .Select(item => new HarvestBaselineFile
             {
                 RelativePath = item.Canonical,
@@ -162,6 +169,38 @@ public sealed class HarvestEngine
         var path = ProfilePaths.HarvestBaseline(managerData, profileId);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(document, ProfileStore.JsonOptions));
+    }
+
+    public static IReadOnlyList<string> PromoteOverwriteConfigs(string managerData, string profileId)
+        => PromoteOverwriteConfigs(managerData, profileId, ModStore.List(managerData).ToArray());
+
+    private static IReadOnlyList<string> PromoteOverwriteConfigs(
+        string managerData,
+        string profileId,
+        IReadOnlyList<ModDocument> store)
+    {
+        var moved = new List<string>();
+        foreach (var canonical in ListOverwrite(managerData, profileId))
+        {
+            var ownerKey = HarvestRules.TryOwnedModKey(canonical, store);
+            if (ownerKey is null)
+            {
+                continue;
+            }
+
+            var source = GamePath.Combine(ProfilePaths.Overwrite(managerData, profileId), canonical);
+            if (!File.Exists(source))
+            {
+                continue;
+            }
+
+            if (TryAssignOwnedFile(managerData, profileId, ownerKey, canonical, source, HashFile(source)))
+            {
+                moved.Add(canonical);
+            }
+        }
+
+        return moved;
     }
 
     public static IReadOnlyList<string> ListOverwrite(string managerData, string profileId)
@@ -264,6 +303,7 @@ public sealed class HarvestEngine
         var document = new ModDocument
         {
             ModKey = source.ModKey,
+            DisplayName = source.DisplayName,
             Version = newVersion,
             Kind = source.Kind,
             Deployable = source.Deployable,
@@ -349,10 +389,52 @@ public sealed class HarvestEngine
         }
     }
 
-    private static IEnumerable<(string Canonical, string FullPath)> EnumerateHarvestable(string managerData, string profileId)
+    private static IEnumerable<(string Canonical, string FullPath)> EnumerateHarvestable(
+        string? gameRoot,
+        string managerData,
+        string profileId,
+        IReadOnlyList<CopiedFileRecord>? copiedFiles = null)
     {
+        var copied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (copiedFiles is null)
+        {
+            var manifestPath = ProfilePaths.Manifest(managerData, profileId);
+            if (File.Exists(manifestPath))
+            {
+                try
+                {
+                    copiedFiles = JsonSerializer.Deserialize<DeployManifest>(
+                        File.ReadAllText(manifestPath),
+                        ProfileStore.JsonOptions)?.CopiedFiles;
+                }
+                catch (JsonException)
+                {
+                    copiedFiles = null;
+                }
+            }
+        }
+
+        if (copiedFiles is not null && !string.IsNullOrWhiteSpace(gameRoot))
+        {
+            foreach (var copy in copiedFiles)
+            {
+                var canonical = GamePath.Normalize(copy.InstallRelative);
+                copied.Add(canonical);
+                var install = GamePath.Combine(gameRoot, canonical);
+                if (File.Exists(install))
+                {
+                    yield return (canonical, install);
+                }
+            }
+        }
+
         foreach (var item in EnumerateTree(ProfilePaths.Staging(managerData, profileId), prefix: null))
         {
+            if (copied.Contains(item.Canonical))
+            {
+                continue;
+            }
+
             yield return item;
         }
 

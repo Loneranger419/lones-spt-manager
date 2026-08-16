@@ -1,4 +1,5 @@
 using Lones.SptManager.Core.Paths;
+using Lones.SptManager.Core.Profiles;
 
 namespace Lones.SptManager.Core.Deploy;
 
@@ -52,6 +53,25 @@ public static class OverlayPlanner
             }
         }
 
+        if (Directory.Exists(stagingRoot))
+        {
+            foreach (var file in Directory.EnumerateFiles(stagingRoot, "*", SearchOption.AllDirectories))
+            {
+                var relative = GamePath.Normalize(Path.GetRelativePath(stagingRoot, file));
+                if (IsCoveredByPlannedOverlay(relative, junctions)
+                    || copies.Any(copy => copy.InstallRelative.Equals(relative, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                copies.Add(new CopiedFileRecord
+                {
+                    InstallRelative = relative,
+                    Sha256 = HashFile(file)
+                });
+            }
+        }
+
         return new OverlayPlan { Junctions = junctions, CopiedFiles = copies };
     }
 
@@ -94,6 +114,22 @@ public static class OverlayPlanner
         return rest.Length > 0
                && !rest.Contains('/')
                && !rest.Equals("spt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsCoveredByPlannedOverlay(string relative, IEnumerable<JunctionRecord> junctions)
+    {
+        var path = GamePath.Normalize(relative);
+        if (path.Equals(ProfilePaths.StagingMarkerName, StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith("/" + ProfilePaths.StagingMarkerName, StringComparison.OrdinalIgnoreCase)
+            || GamePath.IsUnderOrEqual(path, SptLayout.BepInExConfig)
+            || GamePath.IsUnderOrEqual(path, SptLayout.UserProfiles))
+        {
+            return true;
+        }
+
+        return junctions.Any(junction =>
+            GamePath.IsUnderOrEqual(path, junction.StagingRelative)
+            || GamePath.IsUnderOrEqual(path, junction.InstallRelative));
     }
 
     private static void TryDirectoryJunction(

@@ -156,12 +156,14 @@
                                 </ControlTemplate>
                             </ToggleButton.Template>
                         </ToggleButton>
-                        <ContentPresenter Margin="8,4,26,4"
+                        <ContentPresenter x:Name="ContentSite"
+                                          Margin="8,4,26,4"
                                           IsHitTestVisible="False"
                                           VerticalAlignment="Center"
-                                          Content="{TemplateBinding SelectionBoxItem}"
-                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" />
+                                          TextElement.Foreground="{TemplateBinding Foreground}"
+                                          Content="{Binding SelectedItem, RelativeSource={RelativeSource TemplatedParent}}"
+                                          ContentTemplate="{TemplateBinding ItemTemplate}"
+                                          ContentStringFormat="{TemplateBinding ItemStringFormat}" />
                         <Popup IsOpen="{TemplateBinding IsDropDownOpen}"
                                Placement="Bottom"
                                AllowsTransparency="True"

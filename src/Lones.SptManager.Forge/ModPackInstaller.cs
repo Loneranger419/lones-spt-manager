@@ -22,6 +22,7 @@ public sealed class ModPackInstallResult
     public string? Message { get; init; }
     public int Installed { get; init; }
     public int Reused { get; init; }
+    public int Omitted { get; init; }
     public int Failed { get; init; }
     public IReadOnlyList<string> Warnings { get; init; } = [];
 }
@@ -69,6 +70,7 @@ public sealed class ModPackInstaller : IDisposable
         var warnings = new List<string>();
         var installed = 0;
         var reused = 0;
+        var omitted = 0;
         var failed = 0;
 
         try
@@ -79,6 +81,15 @@ public sealed class ModPackInstaller : IDisposable
                 var entry = listed[i];
                 var label = $"{entry.DisplayName} {entry.RequestedVersion}".Trim();
                 Report(progress, $"Pack {i + 1}/{listed.Count}: {label}", i, listed.Count);
+                if (ForgeRestrictedMods.IsRestricted(entry))
+                {
+                    omitted++;
+                    var line = ForgeRestrictedMods.Reason(entry.DisplayName);
+                    warnings.Add(line);
+                    Report(progress, $"Pack {i + 1}/{listed.Count}: {label}", i + 1, listed.Count, line);
+                    continue;
+                }
+
                 try
                 {
                     var existing = FindInStore(store, entry.Id, entry.RequestedVersion);
@@ -149,15 +160,17 @@ public sealed class ModPackInstaller : IDisposable
 
         InstallInventory.ReplaceLoadOrder(managerData, profileId, order);
         var ok = order.Count > 0;
+        var omittedText = omitted > 0 ? $", omitted {omitted}" : "";
         var message = ok
-            ? $"Pack installed {installed}, reused {reused}, failed {failed} of {listed.Count}. Load order follows the JSON list."
-            : $"Pack installed nothing ({failed} failed of {listed.Count}).";
+            ? $"Pack installed {installed}, reused {reused}{omittedText}, failed {failed} of {listed.Count}. Load order follows the JSON list."
+            : $"Pack installed nothing ({failed} failed, {omitted} omitted of {listed.Count}).";
         return new ModPackInstallResult
         {
             Success = ok,
             Message = message,
             Installed = installed,
             Reused = reused,
+            Omitted = omitted,
             Failed = failed,
             Warnings = warnings
         };
@@ -197,8 +210,9 @@ public sealed class ModPackInstaller : IDisposable
                             : entry.RequestedVersion,
                         includeAddons: false,
                         fetchThumbnails: false,
-                        status,
-                        cancellationToken)
+                        displayName: entry.DisplayName,
+                        status: status,
+                        cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException)

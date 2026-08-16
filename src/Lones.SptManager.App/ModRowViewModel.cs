@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO;
 using System.Windows.Media;
@@ -32,7 +33,7 @@ public sealed class ModRowViewModel : INotifyPropertyChanged
 
     public bool IsLeftover => Item.Kind == InstallInventory.LeftoverKind;
 
-    public string Title => Item.Key;
+    public string Title => string.IsNullOrWhiteSpace(Item.DisplayName) ? Item.Key : Item.DisplayName;
 
     public string Subtitle
     {
@@ -54,6 +55,27 @@ public sealed class ModRowViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool MatchesFilter(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return true;
+        }
+
+        var needle = query.Trim();
+        return Contains(Title)
+               || Contains(Item.Key)
+               || Contains(Item.DisplayName)
+               || Contains(Item.Version)
+               || Contains(Item.PackageKind)
+               || Contains(Item.InstallRelative)
+               || Contains(Subtitle);
+
+        bool Contains(string? value)
+            => !string.IsNullOrWhiteSpace(value)
+               && value.Contains(needle, StringComparison.OrdinalIgnoreCase);
+    }
+
     public string PriorityLabel => CanToggle && Item.Priority != int.MaxValue ? Item.Priority.ToString() : "—";
 
     public string Initial => string.IsNullOrWhiteSpace(Title) ? "?" : char.ToUpperInvariant(Title.Trim()[0]).ToString();
@@ -63,25 +85,52 @@ public sealed class ModRowViewModel : INotifyPropertyChanged
         get
         {
             var local = ThumbnailCache.TryLocalPath(ManagerData, Item.ThumbnailUrl);
-            return local is null ? Item.ThumbnailUrl : LoadUnlocked(local);
+            if (local is not null && LoadUnlocked(local) is { } image)
+            {
+                return image;
+            }
+
+            return Item.ThumbnailUrl;
         }
     }
 
+    private static readonly ConcurrentDictionary<string, ImageSource> ThumbnailImages = new(StringComparer.OrdinalIgnoreCase);
+
     private static ImageSource? LoadUnlocked(string path)
     {
+        if (ThumbnailImages.TryGetValue(path, out var cached))
+        {
+            return cached;
+        }
+
         try
         {
+            if (!File.Exists(path) || new FileInfo(path).Length < 24)
+            {
+                return null;
+            }
+
             var image = new BitmapImage();
             image.BeginInit();
             image.CacheOption = BitmapCacheOption.OnLoad;
-            image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-            using (var stream = File.OpenRead(path))
+            image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile | BitmapCreateOptions.IgnoreImageCache;
+            image.DecodePixelWidth = 72;
+            using (var stream = new MemoryStream(File.ReadAllBytes(path)))
             {
                 image.StreamSource = stream;
                 image.EndInit();
+                if (image.CanFreeze)
+                {
+                    image.Freeze();
+                }
             }
 
-            image.Freeze();
+            if (image.PixelWidth <= 0)
+            {
+                return null;
+            }
+
+            ThumbnailImages[path] = image;
             return image;
         }
         catch (Exception)

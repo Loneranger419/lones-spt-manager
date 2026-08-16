@@ -61,6 +61,7 @@ public sealed class ModStore
         var document = new ModDocument
         {
             ModKey = Sanitize(key),
+            DisplayName = FirstNonEmpty(options.DisplayName, options.ModKey),
             Version = Sanitize(version),
             Kind = map.Kind.ToString(),
             Deployable = map.Deployable,
@@ -94,6 +95,7 @@ public sealed class ModStore
         var document = new ModDocument
         {
             ModKey = key,
+            DisplayName = FirstNonEmpty(options.DisplayName, options.ModKey),
             Version = version,
             Kind = map.Kind.ToString(),
             Deployable = map.Deployable,
@@ -202,6 +204,9 @@ public sealed class ModStore
 
         return "unknown-mod";
     }
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
     private static string Sanitize(string value)
     {

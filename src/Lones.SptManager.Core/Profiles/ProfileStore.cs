@@ -12,6 +12,7 @@ public sealed class ProfileDocument
     public IReadOnlyList<EnabledMod> Enabled { get; init; } = [];
     public string LaunchMode { get; init; } = "solo";
     public string? JoinUrl { get; init; }
+    public string? PackSource { get; init; }
     public DateTimeOffset UpdatedAtUtc { get; init; }
 }
 
@@ -71,6 +72,9 @@ public static class ProfilePaths
             .ToArray();
     }
 
+    public static string LastProfilePath(string managerData)
+        => Path.Combine(managerData, "last-profile.json");
+
     public static IReadOnlyList<string> ProfileIdsWithJournal(string managerData)
     {
         var root = ProfilesRoot(managerData);
@@ -94,6 +98,11 @@ public static class ProfilePaths
     }
 }
 
+internal sealed class LastProfileDocument
+{
+    public string? ProfileId { get; init; }
+}
+
 public sealed class ProfileStore
 {
     internal static readonly JsonSerializerOptions JsonOptions = new()
@@ -102,6 +111,101 @@ public sealed class ProfileStore
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+
+    public static void RememberLastProfile(string managerData, string profileId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(managerData);
+        var id = ProfilePaths.Sanitize(profileId);
+        Directory.CreateDirectory(managerData);
+        File.WriteAllText(
+            ProfilePaths.LastProfilePath(managerData),
+            JsonSerializer.Serialize(new LastProfileDocument { ProfileId = id }, JsonOptions));
+    }
+
+    public static string? TryLastUsedProfileId(string managerData)
+    {
+        if (string.IsNullOrWhiteSpace(managerData) || !Directory.Exists(managerData))
+        {
+            return null;
+        }
+
+        var ids = ProfilePaths.ListProfileIds(managerData);
+        if (ids.Count == 0)
+        {
+            return null;
+        }
+
+        var remembered = TryReadRemembered(managerData);
+        if (remembered is not null
+            && ids.Contains(remembered, StringComparer.OrdinalIgnoreCase))
+        {
+            return remembered;
+        }
+
+        string? best = null;
+        var bestTime = DateTimeOffset.MinValue;
+        foreach (var id in ids)
+        {
+            var time = LastActivityUtc(managerData, id);
+            if (time > bestTime)
+            {
+                bestTime = time;
+                best = id;
+            }
+        }
+
+        return best;
+    }
+
+    private static string? TryReadRemembered(string managerData)
+    {
+        var path = ProfilePaths.LastProfilePath(managerData);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            var document = JsonSerializer.Deserialize<LastProfileDocument>(File.ReadAllText(path), JsonOptions);
+            return string.IsNullOrWhiteSpace(document?.ProfileId)
+                ? null
+                : ProfilePaths.Sanitize(document.ProfileId);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static DateTimeOffset LastActivityUtc(string managerData, string profileId)
+    {
+        var latest = DateTimeOffset.MinValue;
+        var profile = new ProfileStore().TryRead(managerData, profileId);
+        if (profile is not null && profile.UpdatedAtUtc > latest)
+        {
+            latest = profile.UpdatedAtUtc;
+        }
+
+        var manifestPath = ProfilePaths.Manifest(managerData, profileId);
+        if (File.Exists(manifestPath))
+        {
+            try
+            {
+                var manifest = JsonSerializer.Deserialize<DeployManifest>(File.ReadAllText(manifestPath), JsonOptions);
+                if (manifest is not null && manifest.WrittenAtUtc > latest)
+                {
+                    latest = manifest.WrittenAtUtc;
+                }
+            }
+            catch (JsonException)
+            {
+                // Unreadable manifests still lose to a newer readable profile.
+            }
+        }
+
+        return latest;
+    }
 
     public ProfileDocument? TryRead(string managerData, string profileId)
     {
@@ -119,7 +223,8 @@ public sealed class ProfileStore
         string profileId,
         IReadOnlyList<EnabledMod> enabled,
         string? launchMode = null,
-        string? joinUrl = null)
+        string? joinUrl = null,
+        string? packSource = null)
     {
         var id = ProfilePaths.Sanitize(profileId);
         var existing = TryRead(managerData, id);
@@ -130,11 +235,15 @@ public sealed class ProfileStore
             Enabled = enabled,
             LaunchMode = launchMode ?? existing?.LaunchMode ?? "solo",
             JoinUrl = joinUrl ?? existing?.JoinUrl,
+            PackSource = FirstNonEmpty(packSource, existing?.PackSource),
             UpdatedAtUtc = DateTimeOffset.UtcNow
         };
         File.WriteAllText(ProfilePaths.ProfileJson(managerData, id), JsonSerializer.Serialize(document, JsonOptions));
         return document;
     }
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     public ProfileDocument LoadOrCreate(string managerData, string profileId)
     {
@@ -183,6 +292,12 @@ public sealed class ProfileStore
             existing?.Enabled ?? [],
             existing?.LaunchMode,
             existing?.JoinUrl);
+
+        var remembered = TryReadRemembered(managerData);
+        if (remembered is not null && remembered.Equals(sourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            RememberLastProfile(managerData, destinationId);
+        }
 
         return new ProfileCopyResult
         {
