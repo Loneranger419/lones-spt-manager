@@ -1,97 +1,133 @@
+<p align="center">
+  <img src="assets/lones-spt-manager-icon.png" width="160" alt="Lone's SPT Manager">
+</p>
+
 # Lone's SPT Manager
 
-A Windows mod manager for [SPT](https://sp-tarkov.com/) (Single Player Tarkov) 4.1, in the spirit of Mod Organizer 2: mods live **outside** the game folder, each **profile** keeps its own enabled set / saves / configs / generated files, and [The Forge](https://sp-mod.com/) is the catalogue.
+A Windows manager for **SPT 4.1**. Mods stay **outside** the game folder. Each **profile** keeps its own enabled mods, load order, saves, configs, and leftover files. [The Forge](https://sp-mod.com/) is built in for search and install.
 
-Source: [github.com/Loneranger419/lones-spt-manager](https://github.com/Loneranger419/lones-spt-manager).
+Download the exe from [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases). This app is not listed on The Forge.
 
-WPF app, `net10.0-windows` (`Lones.SptManager.slnx`). Built against SPT **4.1.2**.
+Use it if you want to:
 
-Not affiliated with SPT, SP-Tushonka, Battlestate Games, or Mod Organizer 2.
+- Keep a clean SPT install and swap setups without copying folders by hand
+- Run more than one profile (solo vs Fika, different packs, a test character)
+- Install from The Forge or from a shared `mods.json` pack
+- Launch **solo**, **Fika host**, or **Fika join** from one window
 
----
+This is **not** SPT Mod Manager. Do not run both against the same install. This app will not download SPT Mod Manager from The Forge.
 
-## Run it
-
-Needs the [.NET 10 SDK](https://dotnet.microsoft.com/download) (see `global.json`).
-
-```
-dotnet test Lones.SptManager.slnx
-dotnet run --project src/Lones.SptManager.App
-```
-
-On first launch: **Bind** the SPT game root (the folder with `EscapeFromTarkov.exe`, `BepInEx`, and `SPT_Runtime`). Manager data defaults to `%AppData%\LonesSptManager`.
-
-### Release exe
-
-Push a version tag and GitHub Actions publishes a self-contained `win-x64` build (no .NET install on the player's machine):
-
-```
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-That creates a [GitHub Release](https://github.com/Loneranger419/lones-spt-manager/releases) with `LonesSptManager.exe`, `LonesSptManager-win-x64.zip` (exe plus `mods.json.example`), and `mods.json.example` as its own asset. You can also **Actions → Release → Run workflow** to build an artifact without tagging.
+Not affiliated with SPT, SP-Tushonka, Battlestate Games, or Mod Organizer 2. [MIT](LICENSE) licensed.
 
 ---
 
-## How it works
+## Install
 
-Mods are extracted into an immutable **store**. Each profile gets a **staging** tree (the merge the game may write into). **Deploy** junctions install folders onto that staging tree — never onto the store. Junctions write through, so pointing the live install at the shared store would mutate it.
+1. Install a working **SPT 4.1.2** copy first (the folder with `EscapeFromTarkov.exe`, `BepInEx`, and `SPT_Runtime`).
+2. Download the latest **zip** from [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases).
+3. Extract it somewhere **that is not** your SPT game folder. Put `LonesSptManager.exe` on the desktop or in its own folder.
+4. Run `LonesSptManager.exe`. No extra .NET install is required.
+5. If Windows says **Windows protected your PC**, that is common for an unsigned exe. Use **More info → Run anyway** only if you trust the download.
+6. **Bind** the SPT game root (the same folder as `EscapeFromTarkov.exe`). Manager data defaults to `%AppData%\LonesSptManager`.
+7. Add a **profile** (or keep the first one) and start installing mods.
 
-After you quit, **Harvest** copies new or changed files into **Overwrite**. Configs that belong to a store package (`config.json`, `config.jsonc`, `blacklists.json`, files under `config/` / `configs/`, matching BepInEx `.cfg`) attach to that mod as per-profile generated files. Generated mappings, `state.json`, logs, `wwwroot`, and similar stay in Overwrite and show greyer in that list (still selectable). You can still assign leftover Overwrite files to a mod (new store version; the hashed original stays put) or discard them.
+`mods.json.example` in the zip is a sample pack file. You do not need it unless you are building or sharing a pack.
 
-`BepInEx\plugins` itself stays a real folder because SPT-owned `spt\` lives there. Deploy junctions each extra plugin **subdirectory**. Loose `BepInEx/plugins/*.dll` packages are wrapped into `plugins/<name>/` first. Leftover files that belong at the game root (Dynamic Maps’ `EscapeFromTarkov_Data/Managed` DLLs, ReShade packs like Sharper Tushonka) are copied onto the install on deploy and removed when the mod is disabled. Check `dir /AL BepInEx\plugins` for `<JUNCTION>` — files inside a junction look normal in Explorer.
+### Remove it
 
-**Load order** on the left list is file overlay: **0 at the top loads first**, later number wins. That is not SPT’s server ModGuid order. An empty saved enabled list means all mods off. The box above the list filters by name, folder, version, or leftover path.
+1. In the app, **Purge manager data** if you want the junctions and cached mods gone. That does **not** delete your SPT install.
+2. Close the app and delete `LonesSptManager.exe` (and the folder you extracted).
+3. Optional: delete `%AppData%\LonesSptManager`.
 
----
-
-## Using the app
-
-- **Profiles** — dropdown switches and deploys. While that runs, the window blurs and a spinner blocks clicks. The last used profile is selected again on the next launch and its name shows in the header box. Add can copy from another profile (saves, generated files, BepInEx configs, Overwrite, enabled mods) or install a Forge **pack** from an HTTPS / local `mods.json` (`id` + `installedVersion`; optional `name` / `slug` for labels; list order = load order 0 first). `mods.json.example` in the repo and release zip is a pack in that shape. A pack link is saved on that profile; Edit shows **Update** to reinstall from it. Edit can also rename, copy, or delete (not the last profile).
-- **Packs** — progress popup with download size and extract `N / M` files plus per-file bytes. Cancel aborts the current download or extract. Store hits are reused. Failed entries are skipped. SPT Mod Manager is omitted (not counted as a failure). Unpack prefers installed **7-Zip** or Windows `tar` (sequential, native), then SHA-256 hashes the written files in parallel so Harvest still gets the same fingerprints. If neither tool is available, managed zip/7z extract writes first and hashes after. Pack installs keep Forge **names and thumbnail URLs** (from the pack JSON / Forge catalogue). The list then downloads any missing thumbnail files (not just the URL) and decodes the local PNG/JPG for the 36×36 tile. If a cached file will not decode, the Forge URL is used instead. Mods with no Forge thumbnail stay as the letter. A zip that is just a plugin folder (or a root DLL) is imported on pack/Forge install instead of stopping on “confirm the archive layout.” ReShade packs (`dxgi.dll` + `ReShade.ini` / `reshade-shaders`) and `EscapeFromTarkov_Data/` leftovers deploy to the game root.
-- **The Forge** — search `sp-mod.com` (no token). Install downloads to `cache/forge/` then the store. `conflict: true` blocks. `fika_compatibility=incompatible` warns. Honour HTTP 429 / `Retry-After`. **SPT Mod Manager** (Forge id 2851) is incompatible with this app: search hides it, pack installs omit it, and Forge download is refused.
-- **Launch** — **solo** / **Fika host** starts `SPT_Runtime\SPT.Server.exe` then `SPT.Launcher.exe` (cwd `SPT_Runtime`), waits for TCP 6969 or log `Server has started`. **Fika join** starts the launcher only and writes `user\launcher\config.json` `Url` without dropping other keys. Never starts `EscapeFromTarkov.exe` or BattlEye. The window stays blurred with a spinner until that session’s server and/or client (`SPT.Server`, `SPT.Launcher`, `EscapeFromTarkov`) have all quit. Harvest after you quit. Deploy and Harvest use the same overlay.
-- **Leftovers** — right-click **Import leftover** to claim a real install folder into the store, then Deploy to junction it.
-- **Purge manager data** — detaches junctions and wipes store / profiles / instances / cache. Does **not** delete the SPT install. Bind afterward.
-
-Theme follows Windows **Settings → Personalization → Colors**. Default window is 1330×930. Forge thumbnails cache under `cache/thumbnails/`.
+After a purge, **Bind** again if you still want to use the manager.
 
 ---
 
-## SPT 4.1 layout
+## How to use
 
-Game root has `EscapeFromTarkov.exe`, `BepInEx`, Doorstop (`winhttp.dll`). Server, launcher, and `user` live under **`SPT_Runtime`**, not the 4.0 wiki’s `SPT\` folder.
+### Daily loop
 
-| Kind | Path |
-| --- | --- |
-| Server mods | `SPT_Runtime\user\mods` |
-| Client mods | `BepInEx\plugins` |
-| Saves | `SPT_Runtime\user\profiles` |
-| F12 configs | `BepInEx\config` |
-| Prepatchers | `SPT_Runtime\user\patchers` |
-| Fika join URL | `SPT_Runtime\user\launcher\config.json` (missing on stock 4.1.2 until something writes it) |
+1. Pick a **profile** at the top. Switching deploys that profile onto the game.
+2. Enable or disable mods on the left list. Drag to change **load order** (0 at the top loads first; later rows win when files overlap).
+3. **Deploy** if you changed mods and are not about to Launch (Launch deploys first).
+4. **Launch**. The window stays busy until that session’s server and/or client have quit.
+5. **Harvest** after you quit so new configs and leftover files come back into the profile.
 
-Do not delete `BepInEx\plugins\spt` or `BepInEx\patchers\spt-prepatch.dll`. 4.1.2 does not run 4.0.X mods. Archives may use `SPT_Runtime/`, wiki `SPT/`, bare `user/`, a wrapper folder, or backslash zip paths — the mapper normalizes those. Root `.exe` tools are not merged into the game tree by default.
+The window blurs with a spinner during profile switch, Deploy, Harvest, and Launch. Wait it out.
 
-**Fika host:** SPT.Server then SPT.Launcher (TCP 6969; UDP 25565 is the raid-hosting **client**). **Fika join:** launcher only, URL `https://host:6969`. Joiners still need the Fika client plugin. Plugin zip: `BepInEx/plugins/Fika/`. Server zip: `SPT_Runtime/user/mods/fika-server/`.
+### Install mods
 
-Forge API is `https://sp-mod.com/api/v0` (public, read-only). Do not use `forge.sp-tarkov.com` or `forge.sp-mod.com` (both dead). File-tree listings are optional; install still works without one.
+- **The Forge** tab — search, select, **Install**. **Updates** checks what you already have.
+- **Import zip** — drop in a `.zip` / `.7z` you already downloaded.
+- **Add profile → Install from pack** — HTTPS link or a local `mods.json`. List order is load order (0 first). Each entry needs a Forge `id` and `installedVersion`. Failed mods are skipped. Edit the profile later and **Update** to reinstall that pack.
+
+A pack can copy from another profile **or** install from JSON, not both in one go.
+
+### Profiles
+
+**Add** can start empty, copy from another profile (saves, generated files, BepInEx configs, Overwrite, enabled mods), or install a pack.
+
+**Edit** can rename, copy, delete (not the last profile), or **Update** a saved pack link.
+
+The last profile you used is selected again next time.
+
+### Overwrite
+
+After Harvest, extra files land on the **Overwrite** tab. Configs that belong to a mod are attached to that mod for this profile. Greyer rows are generated/state files that stay in Overwrite. You can **Assign to mod**, **Discard file**, or **Discard all Overwrite**.
+
+### Already-modded install
+
+If SPT already has real folders in `BepInEx\plugins` or `SPT_Runtime\user\mods`, right-click a leftover row → **Import leftover into store**, then Deploy so the manager owns it.
+
+### Other buttons
+
+- **Repair** — fix a stuck or half-applied deploy.
+- **Purge manager data** — wipe this app’s store, profiles, and cache. SPT itself stays.
 
 ---
 
-## Solution
+## Fika
 
-| Project | Role |
-| --- | --- |
-| `src/Lones.SptManager.App` | WPF UI |
-| `src/Lones.SptManager.Core` | Bind, mapper, store, deploy, profiles, harvest, launch |
-| `src/Lones.SptManager.Forge` | Forge HTTP + pack install |
-| `src/Lones.SptManager.Native` | Junctions, hardlinks, volume IDs, no-follow deletes |
-| `tests/Lones.SptManager.Tests` | Bind / mapper / deploy / profile / Forge / launch |
+Install the Fika **client** and **server** mods on the profile the same way as any other Forge mods. Everyone in the group needs the Fika client plugin.
 
-Locked product choices: **C# / WPF**; Forge-native on `sp-mod.com`; profiles + Overwrite; mods off-install; Fika client-only launch; **not USVFS**. Target is `net10.0-windows`.
+| Mode | What it starts | When to use |
+| --- | --- | --- |
+| `solo` | SPT server, then the SPT launcher | Normal single-player |
+| `fika-host` | SPT server, then the SPT launcher | You are hosting |
+| `fika-client` | SPT launcher only | You are joining someone else |
 
-Privacy: never dump profile JSON, `credentials.json`, or `server.key` contents.
+For **fika-client**, put the host URL in **Join URL** (example: `https://their-pc:6969`). The manager writes that into the launcher config and leaves the other keys alone.
 
-`.gitignore` drops `bin/` `obj/` `.vs/` user files, NuGet junk, secrets, local SPT/manager runtime, `PLAN.md`, and `research/`.
+This app never starts `EscapeFromTarkov.exe` or BattlEye. You click Play in the SPT launcher like usual.
+
+---
+
+## FAQ
+
+**Do I extract this into the SPT folder?**
+No. Keep the exe outside the game. Bind the game root from inside the app.
+
+**Can I use this with SPT Mod Manager?**
+No. Pick one manager for an install.
+
+**Where did my F12 / mod settings go?**
+Quit the game, then **Harvest**. Settings that belong to a mod stay with that mod on this profile.
+
+**I changed mods but the game looks the same.**
+**Deploy** (or Launch, which deploys first). Make sure the checkboxes on the left are what you want. An empty enabled list means everything is off.
+
+**A Forge / pack install failed.**
+Read the Log tab. Other mods still install. Try again, or install that one from **The Forge** tab.
+
+**Windows blocked the exe.**
+Unsigned indie builds often trip SmartScreen. Use **More info → Run anyway** only if you got the file from the GitHub Release.
+
+**Does Purge delete Tarkov / SPT?**
+No. It only removes this manager’s data. Bind again afterward.
+
+**Linux / Steam Deck?**
+Windows only.
+
+---
+
+Build from source and internals: [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md).

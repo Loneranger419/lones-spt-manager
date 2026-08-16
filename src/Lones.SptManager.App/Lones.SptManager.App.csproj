@@ -5,11 +5,13 @@
     <ProjectReference Include="..\Lones.SptManager.Forge\Lones.SptManager.Forge.csproj" />
     <ProjectReference Include="..\Lones.SptManager.Native\Lones.SptManager.Native.csproj" />
     <Content Include="..\..\mods.json.example" Link="mods.json.example" CopyToOutputDirectory="PreserveNewest" />
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>LonesSptManager</AssemblyName>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
