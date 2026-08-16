@@ -15,17 +15,18 @@ public partial class ProgressDialog : System.Windows.Window
     }
 
     public void Update(ModPackProgress progress)
+        => Update(progress.Message, progress.Current, progress.Total, progress.LogLine);
+
+    public void Update(string message, int current = 0, int total = 0, string? logLine = null)
     {
-        StatusText.Text = progress.Message;
-        Bar.IsIndeterminate = progress.Indeterminate;
-        Bar.Value = progress.Percent;
-        CountText.Text = progress.Total <= 0
-            ? ""
-            : $"{progress.Current} / {progress.Total}";
-        if (!string.IsNullOrWhiteSpace(progress.LogLine))
+        StatusText.Text = message;
+        Bar.IsIndeterminate = total <= 0;
+        Bar.Value = total <= 0 ? 0 : Math.Clamp(100.0 * current / total, 0, 100);
+        CountText.Text = total <= 0 ? "" : $"{current} / {total}";
+        if (!string.IsNullOrWhiteSpace(logLine))
         {
-            LogBox.Items.Add(progress.LogLine);
-            LogBox.ScrollIntoView(progress.LogLine);
+            LogBox.Items.Add(logLine);
+            LogBox.ScrollIntoView(logLine);
         }
     }
 

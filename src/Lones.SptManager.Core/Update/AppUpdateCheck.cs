@@ -16,6 +16,12 @@ public sealed class AppUpdateInfo
     public required string CurrentVersion { get; init; }
     public required string LatestVersion { get; init; }
     public required string ReleaseUrl { get; init; }
+    public string? DownloadUrl { get; init; }
+    public string? AssetName { get; init; }
+    public long AssetSize { get; init; }
+
+    public bool CanInstall
+        => !string.IsNullOrWhiteSpace(DownloadUrl) && !string.IsNullOrWhiteSpace(AssetName);
 
     public string Summary
         => LatestVersion + " is available (you have " + CurrentVersion + ").";
@@ -96,12 +102,50 @@ public static class AppUpdateCheck
         var url = string.IsNullOrWhiteSpace(release.HtmlUrl)
             ? ProductInfo.ReleasesUrl
             : release.HtmlUrl.Trim();
+        var asset = PickAsset(release.Assets?.Select(item => item.ToAsset()));
         return AppUpdateCheckResult.Found(new AppUpdateInfo
         {
             CurrentVersion = NormalizeTag(currentVersion),
             LatestVersion = NormalizeTag(release.TagName),
-            ReleaseUrl = url
+            ReleaseUrl = url,
+            DownloadUrl = asset?.DownloadUrl,
+            AssetName = asset?.Name,
+            AssetSize = asset?.Size ?? 0
         });
+    }
+
+    public static AppUpdateAsset? PickAsset(IEnumerable<AppUpdateAsset>? assets)
+    {
+        if (assets is null)
+        {
+            return null;
+        }
+
+        AppUpdateAsset? exe = null;
+        foreach (var asset in assets)
+        {
+            if (string.IsNullOrWhiteSpace(asset.Name) || string.IsNullOrWhiteSpace(asset.DownloadUrl))
+            {
+                continue;
+            }
+
+            if (!AppUpdateApply.IsTrustedDownloadUrl(asset.DownloadUrl))
+            {
+                continue;
+            }
+
+            if (asset.Name.Equals(ProductInfo.ReleaseZipAsset, StringComparison.OrdinalIgnoreCase))
+            {
+                return asset;
+            }
+
+            if (exe is null && asset.Name.Equals(ProductInfo.ExeFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                exe = asset;
+            }
+        }
+
+        return exe;
     }
 
     public static int? CompareVersions(string? left, string? right)
@@ -170,5 +214,25 @@ public static class AppUpdateCheck
 
         [JsonPropertyName("draft")]
         public bool Draft { get; set; }
+
+        [JsonPropertyName("assets")]
+        public List<GitHubAssetDto>? Assets { get; set; }
+    }
+
+    private sealed class GitHubAssetDto
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("browser_download_url")]
+        public string? BrowserDownloadUrl { get; set; }
+
+        [JsonPropertyName("size")]
+        public long Size { get; set; }
+
+        public AppUpdateAsset ToAsset()
+            => new(Name ?? "", BrowserDownloadUrl ?? "", Size);
     }
 }
+
+public readonly record struct AppUpdateAsset(string Name, string DownloadUrl, long Size);

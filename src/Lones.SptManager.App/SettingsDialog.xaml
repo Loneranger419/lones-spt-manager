@@ -63,10 +63,19 @@
 
             <TextBlock Text="About" FontWeight="SemiBold" Margin="0,0,0,8" />
             <TextBlock Text="{Binding AppVersionLabel}" Margin="0,0,0,8" />
-            <Button Content="Check for updates"
-                    Height="30"
-                    HorizontalAlignment="Left"
-                    Command="{Binding CheckAppUpdateCommand}" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                <Button Content="Check for updates"
+                        Height="30"
+                        MinWidth="140"
+                        HorizontalAlignment="Left"
+                        Command="{Binding CheckAppUpdateCommand}" />
+                <Button Content="Install update"
+                        Height="30"
+                        MinWidth="120"
+                        Margin="8,0,0,0"
+                        Command="{Binding OpenAppUpdateCommand}"
+                        Style="{DynamicResource AccentButton}" />
+            </StackPanel>
             <TextBlock TextWrapping="Wrap"
                        Margin="0,6,0,0"
                        FontSize="11"

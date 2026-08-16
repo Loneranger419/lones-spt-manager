@@ -11,4 +11,6 @@ public static class ProductInfo
     public const string GitHubRepo = "lones-spt-manager";
     public const string ReleasesUrl = "https://github.com/" + GitHubOwner + "/" + GitHubRepo + "/releases";
     public const string LatestReleaseApiUrl = "https://api.github.com/repos/" + GitHubOwner + "/" + GitHubRepo + "/releases/latest";
+    public const string ExeFileName = "LonesSptManager.exe";
+    public const string ReleaseZipAsset = "LonesSptManager-win-x64.zip";
 }

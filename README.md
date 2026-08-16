@@ -89,7 +89,7 @@ If SPT already has real folders in `BepInEx\plugins` or `SPT_Runtime\user\mods`,
 ### Other buttons
 
 - **Settings** — theme (follow Windows, Dark, or Light), manager data folder, **Purge manager data**, **Repair** (stuck or half-applied deploy), and **Check for updates**.
-- **App update** — appears in the header when a newer GitHub Release exists. It opens the download page. The app does not install the update itself.
+- **App update** — appears in the header when a newer GitHub Release exists. It downloads the zip, replaces `LonesSptManager.exe`, and restarts. Manager data and the SPT install stay put.
 - **Bind** — next to the game root. Point the manager at this SPT install.
 
 ---
@@ -140,7 +140,7 @@ Windows only.
 **Settings** (top right). Theme can follow Windows, or stay Dark / Light. The manager data folder, **Purge manager data**, **Repair**, and **Check for updates** are in the same window. Unchecked mods in the list are greyed out.
 
 **Will the app update itself?**
-No. On launch it asks GitHub if a newer Release exists. If so, **App update** shows in the header. **Settings → Check for updates** does the same check on demand. Download the new zip from GitHub and replace the exe.
+On launch it asks GitHub if a newer Release exists. **App update** (or **Settings → Install update**) downloads that zip, replaces the exe, and restarts. It does not touch manager data or the SPT folder. **Settings → Check for updates** only checks. If the folder is not writable, open the GitHub Release and replace the exe yourself.
 
 ---
 

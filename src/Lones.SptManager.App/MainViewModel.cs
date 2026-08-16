@@ -41,8 +41,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private CancellationTokenSource? _packCheckCts;
     private bool _appUpdateAvailable;
     private string _appUpdateSummary = string.Empty;
-    private string _appUpdateStatus = "On launch the app checks GitHub Releases. Click Check to run that again. Updates are not installed automatically.";
-    private string? _appUpdateUrl;
+    private string _appUpdateStatus = "On launch the app checks GitHub Releases. Click Check to run that again. App update downloads the new exe and restarts.";
+    private AppUpdateInfo? _appUpdate;
     private CancellationTokenSource? _appCheckCts;
     private bool _checkingAppUpdate;
 
@@ -81,7 +81,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         PurgeCommand = new RelayCommand(Purge, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
         SettingsCommand = new RelayCommand(OpenSettings, () => !_busy);
         OpenPackUpdateCommand = new RelayCommand(EditProfile, () => !_busy && PackUpdateAvailable);
-        OpenAppUpdateCommand = new RelayCommand(OpenAppUpdate, () => AppUpdateAvailable);
+        OpenAppUpdateCommand = new RelayCommand(InstallAppUpdate, () => AppUpdateAvailable && !_busy);
         CheckAppUpdateCommand = new RelayCommand(CheckAppUpdateNow, () => !IsCheckingAppUpdate);
         CollectionViewSource.GetDefaultView(InventoryItems).Filter = MatchesModFilter;
         RestoreLastInstance();
@@ -877,10 +877,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var info = result.Update;
         AppUpdateAvailable = result.Status == AppUpdateCheckStatus.UpdateAvailable && info is not null;
         AppUpdateSummary = info?.Summary ?? string.Empty;
-        _appUpdateUrl = info?.ReleaseUrl;
+        _appUpdate = info;
         if (AppUpdateAvailable)
         {
-            AppUpdateStatus = info!.Summary + " Open the GitHub Release to download the zip.";
+            AppUpdateStatus = info!.CanInstall
+                ? info.Summary + " Click App update to download it and restart."
+                : info.Summary + " Open the GitHub Release to download the zip.";
             return;
         }
 
@@ -894,14 +896,141 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : "Could not reach GitHub. Try again later, or open " + ProductInfo.ReleasesUrl + ".";
     }
 
-    private void OpenAppUpdate()
+    private void InstallAppUpdate()
+        => _ = InstallAppUpdateAsync();
+
+    private async Task InstallAppUpdateAsync()
     {
-        var url = string.IsNullOrWhiteSpace(_appUpdateUrl) ? ProductInfo.ReleasesUrl : _appUpdateUrl;
+        var update = _appUpdate;
+        if (update is null || IsBusy)
+        {
+            return;
+        }
+
+        foreach (var window in System.Windows.Application.Current.Windows.OfType<SettingsDialog>().ToList())
+        {
+            window.Close();
+        }
+
+        if (!update.CanInstall)
+        {
+            OpenReleasePage(update.ReleaseUrl, "This release has no zip the app can install. Open the download page instead?");
+            return;
+        }
+
+        var targetDirectory = AppUpdateApply.TryGetInstallDirectory(Environment.ProcessPath);
+        if (string.IsNullOrWhiteSpace(targetDirectory))
+        {
+            OpenReleasePage(update.ReleaseUrl, "This build is not running as LonesSptManager.exe, so it cannot replace itself. Open the download page instead?");
+            return;
+        }
+
         var confirm = System.Windows.MessageBox.Show(
-            (string.IsNullOrWhiteSpace(AppUpdateSummary) ? "A newer build is on GitHub." : AppUpdateSummary)
+            update.Summary
             + Environment.NewLine
             + Environment.NewLine
-            + "Open the download page? This app does not install the update itself.",
+            + "Download the GitHub Release and restart this app? Manager data and your SPT install stay put.",
+            ProductInfo.Name,
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Information);
+        if (confirm != System.Windows.MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            AppUpdateApply.EnsureInstallFolderWritable(targetDirectory);
+        }
+        catch (Exception ex)
+        {
+            OpenReleasePage(
+                update.ReleaseUrl,
+                "This folder is not writable (" + ex.Message + "). Open the download page and replace the exe yourself?");
+            return;
+        }
+
+        IsBusy = true;
+        BusyMessage = "Updating Lone's SPT Manager…";
+        CommandManager.InvalidateRequerySuggested();
+        var owner = System.Windows.Application.Current?.MainWindow;
+        var dialog = owner is null ? null : new ProgressDialog("Updating — " + update.LatestVersion) { Owner = owner };
+        using var cts = new CancellationTokenSource();
+        if (dialog is not null)
+        {
+            dialog.CancelRequested += () => cts.Cancel();
+            dialog.Show();
+        }
+
+        var work = Path.Combine(Path.GetTempPath(), "LonesSptManager-update-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(work);
+            var downloadPath = Path.Combine(work, "payload-" + update.AssetName);
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+            var progress = new Progress<AppUpdateProgress>(item =>
+            {
+                Status = item.Message;
+                dialog?.Update(item.Message, item.Current, item.Total);
+            });
+            await AppUpdateApply.DownloadAsync(http, update, downloadPath, progress, cts.Token).ConfigureAwait(true);
+            cts.Token.ThrowIfCancellationRequested();
+            dialog?.Update("Preparing the new exe…", 1, 1);
+            AppUpdateApply.UnpackRelease(downloadPath, work);
+            File.Delete(downloadPath);
+            var plan = AppUpdateApply.WriteApplyScript(Environment.ProcessId, work, targetDirectory);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = plan.ScriptPath,
+                UseShellExecute = true,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            });
+            Status = "Restarting to finish the update…";
+            System.Windows.Application.Current?.Shutdown();
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Update cancelled.";
+            TryDeleteDirectory(work);
+        }
+        catch (Exception ex)
+        {
+            Status = "Update failed: " + ex.Message;
+            TryDeleteDirectory(work);
+            System.Windows.MessageBox.Show(
+                "Could not install the update: " + ex.Message,
+                ProductInfo.Name,
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            if (dialog is not null)
+            {
+                try
+                {
+                    dialog.MarkFinished();
+                    if (dialog.IsVisible)
+                    {
+                        dialog.Close();
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                }
+            }
+
+            IsBusy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void OpenReleasePage(string? url, string prompt)
+    {
+        var target = string.IsNullOrWhiteSpace(url) ? ProductInfo.ReleasesUrl : url;
+        var confirm = System.Windows.MessageBox.Show(
+            prompt,
             ProductInfo.Name,
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Information);
@@ -914,13 +1043,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = url,
+                FileName = target,
                 UseShellExecute = true
             });
         }
         catch (Exception ex)
         {
             Status = "Could not open the release page: " + ex.Message;
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (Exception)
+        {
         }
     }
 

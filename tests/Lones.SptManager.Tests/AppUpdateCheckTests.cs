@@ -28,7 +28,24 @@ public sealed class AppUpdateCheckTests
               "tag_name": "V0.1.4",
               "html_url": "https://github.com/Loneranger419/lones-spt-manager/releases/tag/V0.1.4",
               "prerelease": false,
-              "draft": false
+              "draft": false,
+              "assets": [
+                {
+                  "name": "mods.json.example",
+                  "browser_download_url": "https://github.com/Loneranger419/lones-spt-manager/releases/download/V0.1.4/mods.json.example",
+                  "size": 12
+                },
+                {
+                  "name": "LonesSptManager.exe",
+                  "browser_download_url": "https://github.com/Loneranger419/lones-spt-manager/releases/download/V0.1.4/LonesSptManager.exe",
+                  "size": 100
+                },
+                {
+                  "name": "LonesSptManager-win-x64.zip",
+                  "browser_download_url": "https://github.com/Loneranger419/lones-spt-manager/releases/download/V0.1.4/LonesSptManager-win-x64.zip",
+                  "size": 200
+                }
+              ]
             }
             """,
             "0.1.3");
@@ -39,6 +56,9 @@ public sealed class AppUpdateCheckTests
         Assert.Equal("0.1.3", result.Update.CurrentVersion);
         Assert.Contains("V0.1.4", result.Update.ReleaseUrl, StringComparison.Ordinal);
         Assert.Contains("0.1.4 is available", result.Update.Summary, StringComparison.Ordinal);
+        Assert.True(result.Update.CanInstall);
+        Assert.Equal(ProductInfo.ReleaseZipAsset, result.Update.AssetName);
+        Assert.Contains(ProductInfo.ReleaseZipAsset, result.Update.DownloadUrl, StringComparison.Ordinal);
     }
 
     [Fact]
