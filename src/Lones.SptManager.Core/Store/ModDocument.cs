@@ -10,6 +10,7 @@ public sealed class ModDocument
 {
     public int ManifestVersion { get; init; } = ProductInfo.ManifestVersion;
     public required string ModKey { get; init; }
+    public string? DisplayName { get; init; }
     public required string Version { get; init; }
     public required string Kind { get; init; }
     public required bool Deployable { get; init; }

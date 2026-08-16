@@ -39,6 +39,40 @@ public sealed class DeployEngineTests
     }
 
     [Fact]
+    public void Deploy_RootLeftoversAndReshade_AreCopiedToGameRoot()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("DynamicMaps", "1.2.1", new Dictionary<string, string>
+        {
+            ["BepInEx/plugins/mpstark-dynamicmaps/DynamicMaps.dll"] = "client",
+            ["SPT_Runtime/user/mods/mpstark-dynamicmaps/mod.dll"] = "server",
+            ["EscapeFromTarkov_Data/Managed/Unity.VectorGraphics.dll"] = "unity-vg"
+        });
+        fx.PutMod("Sharper", "1.1.3", new Dictionary<string, string>
+        {
+            ["dxgi.dll"] = "reshade-dll",
+            ["ReShade.ini"] = "ini",
+            ["reshade-shaders/Shaders/CAS.fx"] = "fx"
+        });
+
+        var result = fx.Engine.Deploy(fx.Request(fx.Enable(("DynamicMaps", "1.2.1", 0), ("Sharper", "1.1.3", 1))));
+        Assert.Equal(DeployStatus.Success, result.Status);
+        Assert.True(NtfsLinks.IsJunction(fx.Install("BepInEx/plugins/mpstark-dynamicmaps")));
+        Assert.Equal("unity-vg", File.ReadAllText(fx.Install("EscapeFromTarkov_Data/Managed/Unity.VectorGraphics.dll")));
+        Assert.Equal("reshade-dll", File.ReadAllText(fx.Install("dxgi.dll")));
+        Assert.Equal("ini", File.ReadAllText(fx.Install("ReShade.ini")));
+        Assert.Equal("fx", File.ReadAllText(fx.Install("reshade-shaders/Shaders/CAS.fx")));
+        Assert.False(NtfsLinks.IsJunction(fx.Install("EscapeFromTarkov_Data")));
+        Assert.False(Directory.Exists(fx.Install("BepInEx/plugins/dxgi")));
+
+        var disabled = fx.Engine.Deploy(fx.Request(fx.Enable(("DynamicMaps", "1.2.1", 0))));
+        Assert.Equal(DeployStatus.Success, disabled.Status);
+        Assert.False(File.Exists(fx.Install("dxgi.dll")));
+        Assert.False(Directory.Exists(fx.Install("reshade-shaders")));
+        Assert.True(File.Exists(fx.Install("EscapeFromTarkov_Data/Managed/Unity.VectorGraphics.dll")));
+    }
+
+    [Fact]
     public void Redeploy_Unchanged_IsIdempotent()
     {
         using var fx = new DeployFixture();

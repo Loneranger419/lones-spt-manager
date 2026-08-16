@@ -20,6 +20,7 @@
                     Click="Delete_Click"
                     Visibility="Collapsed" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="UpdateButton" Content="Update" Width="80" Height="28" Margin="0,0,8,0" Click="Update_Click" Visibility="Collapsed" />
                 <Button x:Name="CopyButton" Content="Copy current" Width="110" Height="28" Margin="0,0,8,0" Click="Copy_Click" />
                 <Button Content="OK" Width="80" Height="28" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click" Style="{DynamicResource AccentButton}" />
                 <Button Content="Cancel" Width="80" Height="28" IsCancel="True" Click="Cancel_Click" />
@@ -44,6 +45,19 @@
                     <TextBox x:Name="PackSourceBox" Margin="0,0,8,0" TextChanged="PackSource_Changed" />
                     <Button Grid.Column="1" Content="Browse" Width="72" Height="26" Click="BrowsePack_Click" />
                 </Grid>
+            </StackPanel>
+            <StackPanel x:Name="SavedPackPanel" Margin="0,12,0,0" Visibility="Collapsed">
+                <TextBlock Text="Pack link" Foreground="{DynamicResource MutedBrush}" />
+                <TextBlock x:Name="SavedPackText"
+                           TextWrapping="Wrap"
+                           Margin="0,2,0,0"
+                           FontSize="11"
+                           Foreground="{DynamicResource MutedBrush}" />
+                <TextBlock TextWrapping="Wrap"
+                           Margin="0,6,0,0"
+                           FontSize="11"
+                           Foreground="{DynamicResource MutedBrush}"
+                           Text="Update reinstalls this pack. Store hits are reused; load order follows the JSON list." />
             </StackPanel>
             <StackPanel x:Name="CopyFromPanel" Margin="0,12,0,0">
                 <TextBlock Text="Copy from another profile" Foreground="{DynamicResource MutedBrush}" />

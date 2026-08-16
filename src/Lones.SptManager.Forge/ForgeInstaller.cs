@@ -30,9 +30,15 @@ public sealed class ForgeInstaller
         string? requestedVersion = null,
         bool includeAddons = true,
         bool fetchThumbnails = true,
+        string? displayName = null,
         IProgress<string>? status = null,
         CancellationToken cancellationToken = default)
     {
+        if (ForgeRestrictedMods.IsRestricted(modId, name: displayName))
+        {
+            return Fail(ForgeRestrictedMods.Reason(displayName));
+        }
+
         var versions = await _client.GetVersionsAsync(modId, cancellationToken).ConfigureAwait(false);
         var chosen = requestedVersion is null
             ? ForgeClient.PickVersion(versions)
@@ -65,6 +71,12 @@ public sealed class ForgeInstaller
         };
         foreach (var node in nodes)
         {
+            if (ForgeRestrictedMods.IsRestricted(node))
+            {
+                warnings.Add(ForgeRestrictedMods.Reason(node.Name));
+                continue;
+            }
+
             if (node.LatestCompatibleVersion?.Link is null)
             {
                 warnings.Add("Dependency has no compatible version: " + (node.Name ?? node.Guid ?? node.Id?.ToString()));
@@ -79,6 +91,12 @@ public sealed class ForgeInstaller
             var addons = await _client.ListAddonsAsync(modId, cancellationToken).ConfigureAwait(false);
             foreach (var addon in addons)
             {
+                if (ForgeRestrictedMods.IsRestricted(addon.Id, slug: addon.Slug, name: addon.Name))
+                {
+                    warnings.Add(ForgeRestrictedMods.Reason(addon.Name));
+                    continue;
+                }
+
                 var addonVersion = ForgeClient.PickVersion(addon.Versions);
                 if (addonVersion?.Version is null || addonVersion.Link is null)
                 {
@@ -100,6 +118,12 @@ public sealed class ForgeInstaller
                 downloads.Add((addon.Id, null, addon.Name, addonVersion));
                 foreach (var node in addonNodes.Where(item => item.LatestCompatibleVersion?.Link is not null))
                 {
+                    if (ForgeRestrictedMods.IsRestricted(node))
+                    {
+                        warnings.Add(ForgeRestrictedMods.Reason(node.Name));
+                        continue;
+                    }
+
                     downloads.Add((node.Id, node.Guid, node.Name, node.LatestCompatibleVersion!));
                 }
             }
@@ -108,13 +132,24 @@ public sealed class ForgeInstaller
         var documents = new List<ModDocument>();
         var cache = Path.Combine(managerData, "cache", "forge");
         Directory.CreateDirectory(cache);
-        var thumbnailUrl = fetchThumbnails
-            ? await TryThumbnailAsync(modId, cancellationToken).ConfigureAwait(false)
-            : null;
+        var catalogue = await TryGetModAsync(modId, cancellationToken).ConfigureAwait(false);
+        if (catalogue is not null && ForgeRestrictedMods.IsRestricted(catalogue))
+        {
+            return Fail(ForgeRestrictedMods.Reason(catalogue.Name), warnings);
+        }
+
+        var thumbnailUrl = ThumbnailCache.IsAllowedUrl(catalogue?.Thumbnail) ? catalogue!.Thumbnail : null;
+        var primaryName = FirstNonEmpty(displayName, catalogue?.Name);
         foreach (var item in downloads)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var label = item.Name ?? ("mod " + item.Id);
+            if (ForgeRestrictedMods.IsRestricted(item.Id, item.Guid, name: item.Name))
+            {
+                warnings.Add(ForgeRestrictedMods.Reason(item.Name ?? primaryName));
+                continue;
+            }
+
+            var label = item.Name ?? primaryName ?? ("mod " + item.Id);
             var dest = Path.Combine(cache, Sanitize(item.Id + "-" + item.Version.Version) + ".zip");
             var downloadProgress = status is null
                 ? null
@@ -133,10 +168,12 @@ public sealed class ForgeInstaller
                     managerData,
                     new MapperOptions
                     {
+                        AllowLowConfidence = true,
                         ForgeModId = item.Id,
                         ForgeGuid = item.Guid,
                         Version = item.Version.Version,
-                        ModKey = item.Name,
+                        ModKey = item.Name ?? (item.Id == modId ? primaryName : null),
+                        DisplayName = item.Name ?? (item.Id == modId ? primaryName : null),
                         ThumbnailUrl = item.Id == modId ? thumbnailUrl : null
                     },
                     status,
@@ -148,7 +185,11 @@ public sealed class ForgeInstaller
             }
 
             documents.Add(imported.Document);
-            if (item.Id == modId && thumbnailUrl is not null)
+            if (imported.Map.NeedsConfirm)
+            {
+                warnings.Add(label + ": imported a low-confidence archive layout.");
+            }
+            if (item.Id == modId && thumbnailUrl is not null && fetchThumbnails)
             {
                 await TryCacheThumbnailAsync(managerData, thumbnailUrl, cancellationToken).ConfigureAwait(false);
             }
@@ -204,18 +245,20 @@ public sealed class ForgeInstaller
         return string.Join(Environment.NewLine, lines);
     }
 
-    private async Task<string?> TryThumbnailAsync(int modId, CancellationToken cancellationToken)
+    private async Task<ForgeMod?> TryGetModAsync(int modId, CancellationToken cancellationToken)
     {
         try
         {
-            var details = await _client.GetModAsync(modId, cancellationToken).ConfigureAwait(false);
-            return ThumbnailCache.IsAllowedUrl(details?.Thumbnail) ? details!.Thumbnail : null;
+            return await _client.GetModAsync(modId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)
         {
             return null;
         }
     }
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private async Task TryCacheThumbnailAsync(string managerData, string url, CancellationToken cancellationToken)
     {

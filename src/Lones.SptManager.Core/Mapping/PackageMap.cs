@@ -44,6 +44,7 @@ public sealed class MapperOptions
     public bool ImportTools { get; init; }
     public long? ExpectedContentLength { get; init; }
     public string? ModKey { get; init; }
+    public string? DisplayName { get; init; }
     public string? Version { get; init; }
     public int? ForgeModId { get; init; }
     public string? ForgeGuid { get; init; }

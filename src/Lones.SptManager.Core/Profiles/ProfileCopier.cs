@@ -91,6 +91,7 @@ public static class ProfileCopier
             Enabled = options.EnabledMods ? sourceProfile.Enabled : [],
             LaunchMode = options.LaunchSettings ? sourceProfile.LaunchMode : "solo",
             JoinUrl = options.LaunchSettings ? sourceProfile.JoinUrl : null,
+            PackSource = sourceProfile.PackSource,
             UpdatedAtUtc = DateTimeOffset.UtcNow
         };
         File.WriteAllText(

@@ -3,6 +3,7 @@ namespace Lones.SptManager.Core.Paths;
 public static class SptLayout
 {
     public const string EscapeFromTarkovExe = "EscapeFromTarkov.exe";
+    public const string EscapeFromTarkovData = "EscapeFromTarkov_Data";
     public const string BepInEx = "BepInEx";
     public const string WinHttpDll = "winhttp.dll";
     public const string DoorstopConfig = "doorstop_config.ini";

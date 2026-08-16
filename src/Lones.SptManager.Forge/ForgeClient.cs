@@ -339,6 +339,11 @@ public sealed class ForgeClient : IDisposable
         var hits = new List<ForgeSearchHit>();
         foreach (var mod in mods)
         {
+            if (ForgeRestrictedMods.IsRestricted(mod))
+            {
+                continue;
+            }
+
             var version = PickVersion(mod.Versions, sptMajorMinor);
             hits.Add(new ForgeSearchHit
             {

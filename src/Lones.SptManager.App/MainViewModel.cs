@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Windows.Data;
 using System.Windows.Input;
 using Lones.SptManager.Core.Deploy;
 using Lones.SptManager.Core.Instance;
@@ -20,6 +21,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _managerData = InstanceStore.DefaultManagerDataPath;
     private string _profileId = ProfilePaths.DefaultProfileId;
     private string _forgeQuery = string.Empty;
+    private string _modFilter = string.Empty;
     private string _launchMode = LaunchModes.Solo;
     private string _joinUrl = string.Empty;
     private ForgeSearchHit? _selectedForgeHit;
@@ -60,8 +62,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         BrowseGameRootCommand = new RelayCommand(BrowseGameRoot);
         BrowseManagerDataCommand = new RelayCommand(BrowseManagerData);
         PurgeCommand = new RelayCommand(Purge, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
+        CollectionViewSource.GetDefaultView(InventoryItems).Filter = MatchesModFilter;
         RestoreLastInstance();
+        RestoreLastProfile();
         RefreshProfiles();
+        LoadProfileLaunchSettings();
         RefreshInventory();
     }
 
@@ -106,6 +111,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
             }
 
+            ProfileStore.RememberLastProfile(ManagerData, _profileId);
             LoadProfileLaunchSettings();
             RefreshInventory();
             ApplySelectedProfile();
@@ -120,6 +126,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (Set(ref _forgeQuery, value))
             {
                 CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public string ModFilter
+    {
+        get => _modFilter;
+        set
+        {
+            if (Set(ref _modFilter, value))
+            {
+                CollectionViewSource.GetDefaultView(InventoryItems).Refresh();
             }
         }
     }
@@ -142,7 +160,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<ModRowViewModel> InventoryItems { get; } = [];
 
-    public ObservableCollection<string> OverwriteItems { get; } = [];
+    public ObservableCollection<OverwriteRowViewModel> OverwriteItems { get; } = [];
 
     public string? SelectedOverwritePath
     {
@@ -548,6 +566,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
+            var stored = TryNormalizePackSource(packSource) ?? packSource.Trim();
+            new ProfileStore().Save(ManagerData, id, created.Enabled, created.LaunchMode, created.JoinUrl, stored);
             Status = "Installing pack into " + id + "…";
             using var client = new ForgeClient();
             using var installer = new ModPackInstaller(client);
@@ -602,6 +622,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             _busy = false;
             CommandManager.InvalidateRequerySuggested();
+            RefreshInventory();
+        }
+    }
+
+    private static string? TryNormalizePackSource(string packSource)
+    {
+        try
+        {
+            return ModPackSource.Normalize(packSource);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
         }
     }
 
@@ -639,10 +672,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        var result = ProfileDialog.ShowEdit(owner, ProfileId);
+        var packSource = new ProfileStore().TryRead(ManagerData, ProfileId)?.PackSource;
+        var result = ProfileDialog.ShowEdit(owner, ProfileId, packSource);
         if (result.Action == ProfileDialogAction.Delete)
         {
             DeleteCurrentProfile();
+            return;
+        }
+
+        if (result.Action == ProfileDialogAction.Update)
+        {
+            if (string.IsNullOrWhiteSpace(packSource))
+            {
+                Status = "This profile has no saved pack link to update from.";
+                return;
+            }
+
+            _ = InstallPackProfileAsync(ProfileId, packSource);
             return;
         }
 
@@ -984,6 +1030,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        var promoted = 0;
+        if (!string.IsNullOrWhiteSpace(ProfileId))
+        {
+            try
+            {
+                promoted = HarvestEngine.PromoteOverwriteConfigs(ManagerData, ProfileId).Count;
+            }
+            catch (Exception)
+            {
+                // Listing / attach must not break the mod list.
+            }
+        }
+
         List<ModRowViewModel> rows;
         try
         {
@@ -1012,6 +1071,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             && string.Equals(row.Item.Version, selectedVersion, StringComparison.OrdinalIgnoreCase));
 
         RefreshOverwrite();
+        if (promoted > 0)
+        {
+            Status = $"Attached {promoted} config file(s) to their mods. Generated state stayed in Overwrite.";
+        }
+
         if (!_hydratingThumbnails && !_busy)
         {
             _ = HydrateMissingThumbnailsAsync();
@@ -1046,12 +1110,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 _profileId = current;
             }
-
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProfileId)));
         }
         finally
         {
             _refreshingProfiles = false;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProfileId)));
         }
     }
 
@@ -1069,9 +1132,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         var missing = InventoryItems
             .Select(row => row.Item)
-            .Where(item => item.Kind == InstallInventory.StoreKind
-                           && item.ForgeModId is > 0
-                           && string.IsNullOrWhiteSpace(item.ThumbnailUrl))
+            .Where(item => item.Kind == InstallInventory.StoreKind && item.ForgeModId is > 0)
+            .Where(NeedsThumbnailHydration)
             .GroupBy(item => item.ForgeModId!.Value)
             .Select(group => group.First())
             .ToArray();
@@ -1089,20 +1151,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 try
                 {
-                    var details = await client.GetModAsync(item.ForgeModId!.Value).ConfigureAwait(true);
-                    if (!ThumbnailCache.IsAllowedUrl(details?.Thumbnail))
+                    var thumb = ThumbnailCache.IsAllowedUrl(item.ThumbnailUrl) ? item.ThumbnailUrl : null;
+                    if (string.IsNullOrWhiteSpace(thumb) || string.IsNullOrWhiteSpace(item.DisplayName))
                     {
-                        continue;
+                        var details = await client.GetModAsync(item.ForgeModId!.Value).ConfigureAwait(true);
+                        thumb = ThumbnailCache.IsAllowedUrl(details?.Thumbnail) ? details!.Thumbnail : thumb;
+                        var name = string.IsNullOrWhiteSpace(details?.Name) ? null : details!.Name;
+                        if (thumb is not null || name is not null)
+                        {
+                            foreach (var document in ModStore.List(ManagerData)
+                                         .Where(doc => doc.ForgeModId == item.ForgeModId))
+                            {
+                                ThumbnailCache.WriteModJsonForgeInfo(ManagerData, document, name, thumb);
+                                changed = true;
+                            }
+                        }
                     }
 
-                    foreach (var document in ModStore.List(ManagerData)
-                                 .Where(doc => doc.ForgeModId == item.ForgeModId))
+                    if (thumb is not null && ThumbnailCache.TryLocalPath(ManagerData, thumb) is null)
                     {
-                        ThumbnailCache.WriteModJsonThumbnail(ManagerData, document, details!.Thumbnail!);
+                        await CacheOneThumbnailAsync(client, thumb).ConfigureAwait(true);
                         changed = true;
                     }
 
-                    await CacheOneThumbnailAsync(client, details!.Thumbnail!).ConfigureAwait(true);
+                    await Task.Delay(250).ConfigureAwait(true);
                 }
                 catch (Exception)
                 {
@@ -1124,6 +1196,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _hydratingThumbnails = false;
         }
     }
+
+    private bool NeedsThumbnailHydration(InventoryItem item)
+        => string.IsNullOrWhiteSpace(item.DisplayName)
+           || string.IsNullOrWhiteSpace(item.ThumbnailUrl)
+           || (ThumbnailCache.IsAllowedUrl(item.ThumbnailUrl)
+               && ThumbnailCache.TryLocalPath(ManagerData, item.ThumbnailUrl) is null);
 
     private async Task CacheForgeThumbnailsAsync(IReadOnlyList<string?> urls)
     {
@@ -1181,7 +1259,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             foreach (var path in HarvestEngine.ListOverwrite(ManagerData, ProfileId))
             {
-                OverwriteItems.Add(path);
+                OverwriteItems.Add(new OverwriteRowViewModel(path));
             }
         }
         catch (Exception)
@@ -1201,6 +1279,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (latest is not null && Directory.Exists(latest.GameRoot))
         {
             _gameRoot = latest.GameRoot;
+        }
+    }
+
+    private void RestoreLastProfile()
+    {
+        if (string.IsNullOrWhiteSpace(ManagerData))
+        {
+            return;
+        }
+
+        var last = ProfileStore.TryLastUsedProfileId(ManagerData);
+        if (!string.IsNullOrWhiteSpace(last))
+        {
+            _profileId = last;
         }
     }
 
@@ -1329,6 +1421,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             CommandManager.InvalidateRequerySuggested();
         }
     }
+
+    private bool MatchesModFilter(object item)
+        => item is ModRowViewModel row && row.MatchesFilter(_modFilter);
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {

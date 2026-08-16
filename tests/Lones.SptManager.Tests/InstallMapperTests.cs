@@ -84,6 +84,70 @@ public sealed class PrefixMapperTests
     }
 
     [Fact]
+    public void LoosePluginFolder_MapsIntoBepInExPlugins()
+    {
+        var map = PrefixMapper.Map(
+        [
+            "DynamicMaps/DynamicMaps.dll",
+            "DynamicMaps/maps/customs.json"
+        ]);
+        Assert.Contains("BepInEx/plugins/DynamicMaps/DynamicMaps.dll", CanonicalSet(map));
+        Assert.Contains("BepInEx/plugins/DynamicMaps/maps/customs.json", CanonicalSet(map));
+        Assert.True(map.Deployable);
+        Assert.False(map.NeedsConfirm);
+    }
+
+    [Fact]
+    public void DynamicMaps_ManagedLeftovers_StayAtGameRoot()
+    {
+        var map = PrefixMapper.Map(
+        [
+            "BepInEx/plugins/mpstark-dynamicmaps/DynamicMaps.dll",
+            "SPT_Runtime/user/mods/mpstark-dynamicmaps/mpstark-dynamicmaps.dll",
+            "EscapeFromTarkov_Data/Managed/Unity.VectorGraphics.dll",
+            "EscapeFromTarkov_Data/Managed/Unity.InternalAPIEngineBridge.003.dll"
+        ]);
+        Assert.Equal(PackageKind.Hybrid, map.Kind);
+        Assert.True(map.Deployable);
+        Assert.False(map.NeedsConfirm);
+        Assert.Contains("EscapeFromTarkov_Data/Managed/Unity.VectorGraphics.dll", CanonicalSet(map));
+        Assert.Contains("EscapeFromTarkov_Data/Managed/Unity.InternalAPIEngineBridge.003.dll", CanonicalSet(map));
+        Assert.Contains("BepInEx/plugins/mpstark-dynamicmaps/DynamicMaps.dll", CanonicalSet(map));
+    }
+
+    [Fact]
+    public void ReshadePack_MapsWholeArchiveToGameRoot()
+    {
+        var map = PrefixMapper.Map(
+        [
+            "dxgi.dll",
+            "ReShade.ini",
+            "SharperTarkovBetterLife.ini",
+            "reshade-shaders/Shaders/CAS.fx"
+        ]);
+        Assert.True(map.Deployable);
+        Assert.False(map.NeedsConfirm);
+        Assert.Contains("dxgi.dll", CanonicalSet(map));
+        Assert.Contains("ReShade.ini", CanonicalSet(map));
+        Assert.Contains("reshade-shaders/Shaders/CAS.fx", CanonicalSet(map));
+        Assert.DoesNotContain(CanonicalSet(map), path => path.StartsWith("BepInEx/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ReshadeWrapperFolder_IsStrippedToGameRoot()
+    {
+        var map = PrefixMapper.Map(
+        [
+            "Sharper/dxgi.dll",
+            "Sharper/ReShade.ini",
+            "Sharper/reshade-shaders/Shaders/CAS.fx"
+        ]);
+        Assert.Equal("Sharper", map.WrapperFolder);
+        Assert.Contains("dxgi.dll", CanonicalSet(map));
+        Assert.Contains("ReShade.ini", CanonicalSet(map));
+    }
+
+    [Fact]
     public void Denylist_Throws()
     {
         Assert.Throws<ZipSlipException>(() => PrefixMapper.Map(["BepInEx/plugins/spt/spt-core.dll"]));

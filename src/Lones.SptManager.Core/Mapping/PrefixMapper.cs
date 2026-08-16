@@ -11,8 +11,15 @@ public static class PrefixMapper
         SptLayout.BepInEx,
         SptLayout.SptRuntime,
         SptLayout.LegacySptFolder,
+        SptLayout.EscapeFromTarkovData,
         "user"
     ];
+
+    private static readonly HashSet<string> RootInjectorDlls = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "dxgi.dll", "d3d9.dll", "d3d11.dll", "d3d12.dll", "opengl32.dll",
+        "ReShade32.dll", "ReShade64.dll"
+    };
 
     private static readonly HashSet<string> JunkNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -42,6 +49,8 @@ public static class PrefixMapper
         var stripped = wrapper is null
             ? files
             : files.Select(file => file[(wrapper.Length + 1)..]).ToList();
+        var reshade = LooksLikeReshade(stripped);
+        var loosePlugin = !reshade && DetectLoosePluginFolder(stripped);
 
         var entries = new List<MappedEntry>(stripped.Count);
         var warnings = new List<string>();
@@ -50,9 +59,19 @@ public static class PrefixMapper
             warnings.Add($"Stripped wrapper folder '{wrapper}'.");
         }
 
+        if (reshade)
+        {
+            warnings.Add("Treated archive as a ReShade / game-root overlay.");
+        }
+        else if (loosePlugin)
+        {
+            warnings.Add("Treated a single top-level folder as BepInEx/plugins/<folder>.");
+        }
+
         for (var i = 0; i < stripped.Count; i++)
         {
-            entries.Add(MapOne(files[i], stripped[i], options, warnings));
+            var relative = loosePlugin ? "BepInEx/plugins/" + stripped[i] : stripped[i];
+            entries.Add(MapOne(files[i], relative, options, warnings, reshade));
         }
 
         var mapped = entries.Where(entry => entry.Disposition == MapDisposition.Mapped).ToList();
@@ -65,7 +84,7 @@ public static class PrefixMapper
         }
 
         var kind = Classify(mapped, tools);
-        var deployable = kind is not PackageKind.Tool && mapped.Count > 0 && !needsConfirm;
+        var deployable = kind is not PackageKind.Tool && mapped.Count > 0 && (!needsConfirm || options.AllowLowConfidence);
         if (needsConfirm)
         {
             warnings.Add("Low-confidence layout (root DLL). Confirm before import.");
@@ -74,20 +93,26 @@ public static class PrefixMapper
         return new PackageMap(kind, deployable, needsConfirm, wrapper, entries, warnings);
     }
 
-    private static MappedEntry MapOne(string original, string relative, MapperOptions options, List<string> warnings)
+    private static MappedEntry MapOne(
+        string original,
+        string relative,
+        MapperOptions options,
+        List<string> warnings,
+        bool reshade)
     {
         if (SptDenylist.IsForbidden(relative))
         {
             return new MappedEntry(original, GamePath.Normalize(relative), MapDisposition.Forbidden, "SPT-owned denylist");
         }
 
-        if (!relative.Contains('/') && JunkNames.Contains(relative))
+        if (!reshade && !relative.Contains('/') && JunkNames.Contains(relative))
         {
             return new MappedEntry(original, null, MapDisposition.SkippedJunk, "Root documentation");
         }
 
         if (GamePath.IsUnderOrEqual(relative, SptLayout.BepInEx)
-            || GamePath.IsUnderOrEqual(relative, SptLayout.SptRuntime))
+            || GamePath.IsUnderOrEqual(relative, SptLayout.SptRuntime)
+            || GamePath.IsUnderOrEqual(relative, SptLayout.EscapeFromTarkovData))
         {
             return Finish(original, relative, options);
         }
@@ -126,6 +151,11 @@ public static class PrefixMapper
                 return new MappedEntry(original, relative, MapDisposition.ToolNotMerged, "Root exe is a tool; not merged into the game tree");
             }
 
+            if (RootInjectorDlls.Contains(relative) || reshade)
+            {
+                return Finish(original, relative, options);
+            }
+
             if (relative.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             {
                 if (options.AllowLowConfidence)
@@ -136,6 +166,17 @@ public static class PrefixMapper
 
                 return new MappedEntry(original, $"BepInEx/plugins/{relative}", MapDisposition.NeedsConfirm, "Root DLL needs confirm");
             }
+        }
+
+        if (reshade)
+        {
+            return Finish(original, relative, options);
+        }
+
+        if (options.AllowLowConfidence)
+        {
+            warnings.Add("Mapped leftover file to the game root: " + relative);
+            return Finish(original, relative, options);
         }
 
         return new MappedEntry(original, null, MapDisposition.NeedsConfirm, "Unrecognized layout");
@@ -184,7 +225,58 @@ public static class PrefixMapper
             return top;
         }
 
+        var innerFiles = files
+            .Where(file => file.StartsWith(top + "/", StringComparison.OrdinalIgnoreCase))
+            .Select(file => file[(top.Length + 1)..])
+            .ToList();
+        if (LooksLikeReshade(innerFiles))
+        {
+            return top;
+        }
+
         return null;
+    }
+
+    private static bool LooksLikeReshade(List<string> files)
+    {
+        var hasInjector = files.Any(file =>
+            !file.Contains('/', StringComparison.Ordinal)
+            && RootInjectorDlls.Contains(file));
+        if (!hasInjector)
+        {
+            return false;
+        }
+
+        return files.Any(file =>
+            file.Equals("ReShade.ini", StringComparison.OrdinalIgnoreCase)
+            || file.Equals("reshade-shaders", StringComparison.OrdinalIgnoreCase)
+            || file.StartsWith("reshade-shaders/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool DetectLoosePluginFolder(List<string> files)
+    {
+        if (files.Count == 0)
+        {
+            return false;
+        }
+
+        if (files.Any(file => GameRootMarkers.Any(marker =>
+                file.Equals(marker, StringComparison.OrdinalIgnoreCase)
+                || file.StartsWith(marker + "/", StringComparison.OrdinalIgnoreCase))))
+        {
+            return false;
+        }
+
+        if (!files.Any(file => file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var tops = files
+            .Select(file => file.Split('/')[0])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return tops.Count == 1 && files.Any(file => file.Contains('/', StringComparison.Ordinal));
     }
 
     private static PackageKind Classify(List<MappedEntry> mapped, List<MappedEntry> tools)

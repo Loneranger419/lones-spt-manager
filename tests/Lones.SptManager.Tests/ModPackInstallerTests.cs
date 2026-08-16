@@ -130,7 +130,57 @@ public sealed class ModPackInstallerTests
             Assert.Equal("Fresh", enabled[1].ModKey);
             Assert.Equal("2.0.0", enabled[1].Version);
             Assert.NotNull(ModStore.TryRead(root, "Fresh", "2.0.0"));
+            Assert.Equal("Fresh", ModStore.TryRead(root, "Fresh", "2.0.0")!.DisplayName);
             Assert.DoesNotContain(InstallInventory.Scan(null, root, "camp").Items, item => item.Key == "Missing");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Install_UsesPackNameAndForgeThumbnail()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lones-pack-name-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var zip = ZipFixture.WriteZip(
+            Path.Combine(root, "wtt.zip"),
+            [("BepInEx/plugins/WTTContentBackport/WTT.dll", "dll")]);
+        var bytes = File.ReadAllBytes(zip);
+        var pack = Path.Combine(root, "mods.json");
+        File.WriteAllText(
+            pack,
+            """{"mods":[{"id":2512,"name":"WTT - Content Backport","installedVersion":"2.0.0"}]}""");
+        var handler = new RouteHandler
+        {
+            ["GET /mod/2512/versions"] =
+                "{\"success\":true,\"data\":[{\"id\":1,\"version\":\"2.0.0\",\"link\":\"https://sp-mod.com/mod/download/2512/wtt/2.0.0\",\"content_length\":"
+                + bytes.Length
+                + ",\"spt_version_constraint\":\"~4.1\",\"fika_compatibility\":\"unknown\"}]}",
+            ["GET /mods/dependencies"] = """{"success":true,"data":{"2512:2.0.0":[]}}""",
+            ["GET /mod/2512"] =
+                """{"success":true,"data":{"id":2512,"name":"WTT - Content Backport","thumbnail":"https://files.sp-mod.com/mods/2512.png"}}""",
+            ["GET /mod/download/2512/wtt/2.0.0"] = bytes
+        };
+        try
+        {
+            using var http = new HttpClient(handler) { BaseAddress = new Uri(ForgeEndpoints.ApiBase) };
+            using var client = new ForgeClient(http);
+            using var installer = new ModPackInstaller(client);
+            new ProfileStore().LoadOrCreate(root, "pack");
+            var result = await installer.InstallAsync(pack, root, "pack");
+            Assert.True(result.Success, result.Message);
+            var document = ModStore.TryRead(root, "WTT - Content Backport", "2.0.0");
+            Assert.NotNull(document);
+            Assert.Equal("WTT - Content Backport", document!.DisplayName);
+            Assert.Equal(2512, document.ForgeModId);
+            Assert.Equal("https://files.sp-mod.com/mods/2512.png", document.ThumbnailUrl);
+            var row = Assert.Single(InstallInventory.Scan(null, root, "pack").Items, item => item.Kind == InstallInventory.StoreKind);
+            Assert.Equal("WTT - Content Backport", row.DisplayName);
         }
         finally
         {
@@ -166,6 +216,48 @@ public sealed class ModPackInstallerTests
             Assert.True(result.Success, result.Message);
             Assert.Equal(1, result.Reused);
             Assert.Equal(0, result.Installed);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Install_OmitsSptModManager()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lones-pack-omit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        PutStoreMod(root, "Already", "1.0.0", forgeModId: 10);
+        var pack = Path.Combine(root, "mods.json");
+        File.WriteAllText(
+            pack,
+            """
+            {
+              "mods": [
+                { "id": 10, "name": "Already", "installedVersion": "1.0.0" },
+                { "id": 2851, "name": "SPT Mod Manager", "slug": "spt-mod-manager", "installedVersion": "0.4.4" }
+              ]
+            }
+            """);
+        try
+        {
+            using var http = new HttpClient(new RouteHandler()) { BaseAddress = new Uri(ForgeEndpoints.ApiBase) };
+            using var client = new ForgeClient(http);
+            using var installer = new ModPackInstaller(client);
+            new ProfileStore().LoadOrCreate(root, "omit");
+            var result = await installer.InstallAsync(pack, root, "omit");
+            Assert.True(result.Success, result.Message);
+            Assert.Equal(1, result.Reused);
+            Assert.Equal(1, result.Omitted);
+            Assert.Equal(0, result.Failed);
+            Assert.Contains("incompatible", string.Join(" ", result.Warnings), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(InstallInventory.Scan(null, root, "omit").Items, item =>
+                item.Key.Contains("SPT Mod Manager", StringComparison.OrdinalIgnoreCase)
+                || item.ForgeModId == 2851);
         }
         finally
         {

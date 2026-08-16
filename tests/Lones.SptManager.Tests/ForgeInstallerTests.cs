@@ -25,6 +25,39 @@ public sealed class ForgeInstallerTests
     }
 
     [Fact]
+    public void Search_OmitsSptModManager()
+    {
+        var mods = new[]
+        {
+            new ForgeMod { Id = 1343, Name = "Skipper", Slug = "skipper" },
+            new ForgeMod
+            {
+                Id = ForgeRestrictedMods.SptModManagerId,
+                Name = ForgeRestrictedMods.SptModManagerName,
+                Slug = ForgeRestrictedMods.SptModManagerSlug,
+                Guid = ForgeRestrictedMods.SptModManagerGuid
+            }
+        };
+        var hits = ForgeClient.ToSearchHits(mods);
+        Assert.Single(hits);
+        Assert.Equal(1343, hits[0].ModId);
+    }
+
+    [Fact]
+    public async Task Install_RestrictedSptModManager_BlocksWithoutDownload()
+    {
+        var handler = new RouteHandler();
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(ForgeEndpoints.ApiBase) };
+        using var client = new ForgeClient(http);
+        var result = await new ForgeInstaller(client).InstallAsync(
+            ForgeRestrictedMods.SptModManagerId,
+            Path.Combine(Path.GetTempPath(), "lones-forge-" + Guid.NewGuid().ToString("N")));
+        Assert.False(result.Success);
+        Assert.Contains("incompatible", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Lone's SPT Manager", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Install_Conflict_Blocks()
     {
         var handler = new RouteHandler

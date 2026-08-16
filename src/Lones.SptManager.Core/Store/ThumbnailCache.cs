@@ -42,6 +42,7 @@ public static class ThumbnailCache
         {
             ManifestVersion = document.ManifestVersion,
             ModKey = document.ModKey,
+            DisplayName = document.DisplayName,
             Version = document.Version,
             Kind = document.Kind,
             Deployable = document.Deployable,
@@ -55,6 +56,34 @@ public static class ThumbnailCache
             Files = document.Files,
             ImportedAtUtc = document.ImportedAtUtc
         };
+        WriteDocument(managerData, updated);
+    }
+
+    public static void WriteModJsonForgeInfo(string managerData, ModDocument document, string? displayName, string? thumbnailUrl)
+    {
+        var updated = new ModDocument
+        {
+            ManifestVersion = document.ManifestVersion,
+            ModKey = document.ModKey,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? document.DisplayName : displayName.Trim(),
+            Version = document.Version,
+            Kind = document.Kind,
+            Deployable = document.Deployable,
+            ArchiveHash = document.ArchiveHash,
+            SourceArchive = document.SourceArchive,
+            ForgeModId = document.ForgeModId,
+            ForgeGuid = document.ForgeGuid,
+            ThumbnailUrl = string.IsNullOrWhiteSpace(thumbnailUrl) ? document.ThumbnailUrl : thumbnailUrl,
+            WrapperFolder = document.WrapperFolder,
+            Warnings = document.Warnings,
+            Files = document.Files,
+            ImportedAtUtc = document.ImportedAtUtc
+        };
+        WriteDocument(managerData, updated);
+    }
+
+    private static void WriteDocument(string managerData, ModDocument updated)
+    {
         var dir = ModStore.PackageDirectory(managerData, updated.ModKey, updated.Version);
         Directory.CreateDirectory(dir);
         File.WriteAllText(
