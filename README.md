@@ -33,7 +33,7 @@ AI coding tools wrote a large part of this app. That is why it is not on The For
 2. Download the latest **zip** from [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases).
 3. Extract it somewhere **that is not** your SPT game folder. Put `LonesSptManager.exe` on the desktop or in its own folder.
 4. Run `LonesSptManager.exe`. No extra .NET install is required.
-5. If Windows says **Windows protected your PC**, that is common for an unsigned exe. Use **More info → Run anyway** only if you trust the download.
+5. If Windows says **Windows protected your PC**, that is common for an unsigned exe. Use **More info → Run anyway** only if you trust the download. [VirusTotal report for V0.1.4](https://www.virustotal.com/gui/file/888684fec023ad0e64fef4fd4547372c0c5e20d8dcb7ea31381d84067d7f23ea).
 6. **Bind** the SPT game root (the same folder as `EscapeFromTarkov.exe`). Manager data defaults to `%AppData%\LonesSptManager`.
 7. Add a **profile** (or keep the first one) and start installing mods.
 
@@ -128,7 +128,7 @@ Quit the game. If you launched from this app, Harvest runs when SPT quits. Other
 Read the Log tab. Other mods still install. Try again, or install that one from **The Forge** tab.
 
 **Windows blocked the exe.**
-Unsigned indie builds often trip SmartScreen. Use **More info → Run anyway** only if you got the file from the GitHub Release.
+Unsigned indie builds often trip SmartScreen. Use **More info → Run anyway** only if you got the file from the GitHub Release. Each release has a [VirusTotal report](https://www.virustotal.com/gui/file/888684fec023ad0e64fef4fd4547372c0c5e20d8dcb7ea31381d84067d7f23ea) (V0.1.4).
 
 **Does Purge delete Tarkov / SPT?**
 No. It only removes this manager’s data. Bind again afterward.

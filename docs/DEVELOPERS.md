@@ -28,6 +28,8 @@ git push origin v0.1.0
 
 That creates a [GitHub Release](https://github.com/Loneranger419/lones-spt-manager/releases) with `LonesSptManager.exe`, `LonesSptManager-win-x64.zip` (exe plus `mods.json.example`), and `mods.json.example` as its own asset. You can also **Actions → Release → Run workflow** to build an artifact without tagging.
 
+After a release, upload `LonesSptManager.exe` to VirusTotal (or open the SHA-256 page once GitHub’s digest is public). Put that report URL on the GitHub Release and replace the README V0.x.x VirusTotal link. Do not tell players to upload the file themselves. A Windows-trusted signature (Azure Artifact Signing or an OV cert) is paid; a self-signed cert does not clear SmartScreen.
+
 The running app compares `ProductInfo.Version` (and `Directory.Build.props` `<Version>`) to the latest GitHub Release `tag_name`. A leading `V`/`v` is ignored (`V0.1.3` == `0.1.3`). Bump both version strings to match the tag before you publish, or existing installs will not see the update. The check is `GET /repos/Loneranger419/lones-spt-manager/releases/latest` (public, no token). Failures stay quiet. **App update** downloads `LonesSptManager-win-x64.zip` (or the loose exe) from that release, unpacks only `LonesSptManager.exe` / `mods.json.example`, writes a temp `.cmd` that waits for this PID, copies those files over the running folder, and relaunches. Download URLs must stay on `github.com/Loneranger419/lones-spt-manager` or `*.githubusercontent.com`. The process must be `LonesSptManager.exe` and the folder must be writable.
 
 ---
