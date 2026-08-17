@@ -153,4 +153,4 @@ On launch it asks GitHub if a newer Release exists. **App update** (or **Setting
 
 ---
 
-Build from source and internals: [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md).
+Build from source and internals: [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md). How this app talks to The Forge (for Forge maintainers): [`docs/FORGE.md`](docs/FORGE.md).
