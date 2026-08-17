@@ -8,6 +8,8 @@ A Windows manager for **SPT 4.1**. Mods stay **outside** the game folder. Each *
 
 Download the exe from [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases). This app is not listed on The Forge.
 
+**Note to Forge staff:** how this app uses your API is in [`docs/FORGE.md`](docs/FORGE.md).
+
 Use it if you want to:
 
 - Keep a clean SPT install and swap setups without copying folders by hand
@@ -153,4 +155,4 @@ On launch it asks GitHub if a newer Release exists. **App update** (or **Setting
 
 ---
 
-Build from source and internals: [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md). How this app talks to The Forge (for Forge maintainers): [`docs/FORGE.md`](docs/FORGE.md).
+Build from source and internals: [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md).
