@@ -22,7 +22,7 @@ Not affiliated with SPT, SP-Tushonka, Battlestate Games, or Mod Organizer 2. [MI
 AI coding tools wrote a large part of this app. That is why it is not on The Forge ([their AI policy](https://sp-mod.com/content-guidelines)). Read the source if you care how it works before you point it at your SPT install.
 
 <p align="center">
-  <img src="src/Lones.SptManager.App/Assets/readme-main.png" alt="Main window with a profile, installed mods, and The Forge tab">
+  <img src="src/Lones.SptManager.App/Assets/readme-main.png" alt="Main window with a profile, installed mods, Deploy and Harvest, and The Forge tab">
 </p>
 
 ---
@@ -33,7 +33,7 @@ AI coding tools wrote a large part of this app. That is why it is not on The For
 2. Download the latest **zip** from [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases).
 3. Extract it somewhere **that is not** your SPT game folder. Put `LonesSptManager.exe` on the desktop or in its own folder.
 4. Run `LonesSptManager.exe`. No extra .NET install is required.
-5. If Windows says **Windows protected your PC**, that is common for an unsigned exe. Use **More info → Run anyway** only if you trust the download. [VirusTotal report for V0.1.4](https://www.virustotal.com/gui/file/888684fec023ad0e64fef4fd4547372c0c5e20d8dcb7ea31381d84067d7f23ea).
+5. If Windows says **Windows protected your PC**, that is common for an unsigned exe. Use **More info → Run anyway** only if you trust the download. [VirusTotal report for V0.1.5](https://www.virustotal.com/gui/file/592400abdb9165eb20cab2ca4872cff575e3a91c21774bc38d431365e95cb627).
 6. **Bind** the SPT game root (the same folder as `EscapeFromTarkov.exe`). Manager data defaults to `%AppData%\LonesSptManager`.
 7. Add a **profile** (or keep the first one) and start installing mods.
 
@@ -137,7 +137,7 @@ That menu is Configuration Manager (it ships with SPT). An empty profile `BepInE
 Read the Log tab. Other mods still install. Try again, or install that one from **The Forge** tab.
 
 **Windows blocked the exe.**
-Unsigned indie builds often trip SmartScreen. Use **More info → Run anyway** only if you got the file from the GitHub Release. Each release has a [VirusTotal report](https://www.virustotal.com/gui/file/888684fec023ad0e64fef4fd4547372c0c5e20d8dcb7ea31381d84067d7f23ea) (V0.1.4).
+Unsigned indie builds often trip SmartScreen. Use **More info → Run anyway** only if you got the file from the GitHub Release. Each release has a [VirusTotal report](https://www.virustotal.com/gui/file/592400abdb9165eb20cab2ca4872cff575e3a91c21774bc38d431365e95cb627) (V0.1.5).
 
 **Does Purge delete Tarkov / SPT?**
 No. It only removes this manager’s data. Bind again afterward.
