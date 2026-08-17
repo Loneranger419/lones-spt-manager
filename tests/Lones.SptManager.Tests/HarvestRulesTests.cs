@@ -182,6 +182,7 @@ public sealed class HarvestRulesTests
                 "BepInEx/plugins/maschine-ScopeRangefinder/ScopeRangefinder.layouts.json",
                 store));
         Assert.Equal("Sharper Tushonka", HarvestRules.TryOwnedModKey("ReShade.ini", store));
+        Assert.Equal("Sharper Tushonka", HarvestRules.TryOwnedModKey("ReShade2.ini", store));
         Assert.Null(HarvestRules.TryOwnedModKey("BepInEx/plugins/maschine-ScopeRangefinder/state.json", store));
     }
 

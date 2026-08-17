@@ -1437,7 +1437,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        BusyMessage = "Starting SPT…";
+        BusyMessage = LaunchModes.StartsServer(LaunchMode)
+            ? "Starting SPT.Server…"
+            : "Starting SPT.Launcher…";
         IsBusy = true;
         await Task.Yield();
         try
@@ -1451,7 +1453,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 JoinUrl = string.IsNullOrWhiteSpace(JoinUrl) ? null : JoinUrl
             };
             var engine = new LaunchEngine();
-            var result = await Task.Run(() => engine.Launch(request)).ConfigureAwait(true);
+            var progress = new Progress<string>(text => BusyMessage = text);
+            var result = await Task.Run(() => engine.Launch(request, progress)).ConfigureAwait(true);
             Status = result.Message ?? (result.Success ? "Launched." : "Launch failed.");
             if (result.Warnings.Count > 0)
             {

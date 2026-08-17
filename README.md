@@ -56,7 +56,7 @@ After a purge, **Bind** again if you still want to use the manager.
 1. Pick a **profile** at the top. Switching deploys that profile onto the game.
 2. Enable or disable mods on the left list. Drag to change **load order** (0 at the top loads first; later rows win when files overlap).
 3. **Deploy** (under the installed list) if you changed mods and are not about to launch.
-4. **Solo**, **Fika host**, or **Fika join**. The window stays busy until that session’s server and/or client have quit, then **Harvest** runs on its own.
+4. **Solo**, **Fika host**, or **Fika join**. Solo / Fika host start the server first and wait until the log says it has started, then open the launcher. The spinner says which of those it is waiting on, then stays up until that session’s server and/or client have quit, then **Harvest** runs on its own. The server console is started so it does not sit waiting for Enter (inherited stdin / Quick Edit).
 5. Use **Harvest** on the installed list if you played without launching from this app.
 
 The window blurs with a spinner during profile switch, Deploy, Harvest, and Launch. Wait it out.
@@ -121,8 +121,17 @@ No. Pick one manager for an install.
 **Where did my F12 / mod settings go?**
 Quit the game. If you launched from this app, Harvest runs when SPT quits. Otherwise click **Harvest** under the installed list. Settings that belong to a mod stay with that mod on this profile.
 
+**ReShade asks me to do the tutorial every launch.**
+ReShade could not write `ReShade.ini` (often after a pack copy), so it saved to `ReShade2.ini`. Deploy was restoring the pack `ReShade.ini` and ignoring that sidecar. Deploy/Harvest now copy the finished tutorial back into `ReShade.ini` and clear the read-only flag.
+
+**F12 does nothing but other plugins work.**
+That menu is Configuration Manager (it ships with SPT). An empty profile `BepInEx\config` gets BepInEx defaults: hotkey **F1**, and `HideManagerGameObject = false`. EFT can then kill the menu object so **no F key** opens it, while Harmony mods still work. Deploy now seeds F12 and sets `HideManagerGameObject = true`. Quit and relaunch after that change.
+
 **I changed mods but the game looks the same.**
 **Deploy** before you play if you changed mods. Make sure the checkboxes on the left are what you want. An empty enabled list means everything is off.
+
+**I disabled a server mod but SPT still tries to load it.**
+**Deploy** after you uncheck it. Leftover files for that mod (Overwrite / empty folders under `SPT_Runtime\user\mods`) are skipped or removed on deploy so SPT does not see a hollow folder.
 
 **A Forge / pack install failed.**
 Read the Log tab. Other mods still install. Try again, or install that one from **The Forge** tab.

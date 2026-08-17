@@ -37,6 +37,51 @@ public sealed class ProfileHarvestTests
     }
 
     [Fact]
+    public void NewProfile_SeedsConfigurationManagerF12()
+    {
+        using var fx = new DeployFixture();
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request([], "fresh")).Status);
+
+        var seeded = Path.Combine(ProfilePaths.BepInExConfig(fx.ManagerData, "fresh"), IsolatedOverlay.ConfigurationManagerCfg);
+        Assert.True(File.Exists(seeded));
+        Assert.Contains("Show config manager = F12", File.ReadAllText(seeded), StringComparison.Ordinal);
+        Assert.Equal(
+            File.ReadAllText(seeded),
+            File.ReadAllText(fx.Install(SptLayout.BepInExConfig + "/" + IsolatedOverlay.ConfigurationManagerCfg)));
+        Assert.Contains(
+            "HideManagerGameObject = true",
+            File.ReadAllText(fx.Install(SptLayout.BepInExConfig + "/" + IsolatedOverlay.BepInExCfg)),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GeneratedBepInExCfg_HidesManagerGameObject()
+    {
+        using var fx = new DeployFixture();
+        WriteInstall(fx, SptLayout.BepInExConfig + "/" + IsolatedOverlay.BepInExCfg, "HideManagerGameObject = false\n");
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request([])).Status);
+        Assert.Contains(
+            "HideManagerGameObject = true",
+            File.ReadAllText(fx.Install(SptLayout.BepInExConfig + "/" + IsolatedOverlay.BepInExCfg)),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "HideManagerGameObject = false",
+            File.ReadAllText(fx.Install(SptLayout.BepInExConfig + "/" + IsolatedOverlay.BepInExCfg)),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExistingConfigurationManagerCfg_IsNotReplaced()
+    {
+        using var fx = new DeployFixture();
+        WriteInstall(fx, SptLayout.BepInExConfig + "/" + IsolatedOverlay.ConfigurationManagerCfg, "Show config manager = F8");
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request([])).Status);
+        Assert.Equal(
+            "Show config manager = F8",
+            File.ReadAllText(fx.Install(SptLayout.BepInExConfig + "/" + IsolatedOverlay.ConfigurationManagerCfg)));
+    }
+
+    [Fact]
     public void Harvest_NewConfigCfg_GoesToOverwrite()
     {
         using var fx = new DeployFixture();
@@ -51,6 +96,25 @@ public sealed class ProfileHarvestTests
             "f12",
             File.ReadAllText(GamePath.Combine(ProfilePaths.Overwrite(fx.ManagerData, ProfilePaths.DefaultProfileId), "BepInEx/config/com.example.mod.cfg")));
         Assert.DoesNotContain(harvest.Files, file => file.CanonicalPath.Equals("BepInEx/config/BepInEx.cfg", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Harvest_Reshade2Ini_PromotesIntoReShadeIni()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("Sharper", "1.1.3", new Dictionary<string, string>
+        {
+            ["ReShade.ini"] = "[OVERLAY]\nTutorialProgress=0\n"
+        });
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request()).Status);
+        File.WriteAllText(fx.Install("ReShade2.ini"), "[OVERLAY]\nTutorialProgress=4\n");
+
+        var harvest = new HarvestEngine(fx.Lock).Harvest(fx.GameRoot, fx.ManagerData, ProfilePaths.DefaultProfileId);
+        Assert.Equal(DeployStatus.Success, harvest.Status);
+        Assert.Contains("TutorialProgress=4", File.ReadAllText(fx.Install("ReShade.ini")));
+        Assert.Contains(
+            harvest.AssignedToMods,
+            file => file.CanonicalPath.Equals("ReShade.ini", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

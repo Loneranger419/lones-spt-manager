@@ -64,12 +64,31 @@ public sealed class DeployEngineTests
         Assert.Equal("fx", File.ReadAllText(fx.Install("reshade-shaders/Shaders/CAS.fx")));
         Assert.False(NtfsLinks.IsJunction(fx.Install("EscapeFromTarkov_Data")));
         Assert.False(Directory.Exists(fx.Install("BepInEx/plugins/dxgi")));
+        Assert.False(new FileInfo(fx.Install("ReShade.ini")).IsReadOnly);
 
         var disabled = fx.Engine.Deploy(fx.Request(fx.Enable(("DynamicMaps", "1.2.1", 0))));
         Assert.Equal(DeployStatus.Success, disabled.Status);
         Assert.False(File.Exists(fx.Install("dxgi.dll")));
         Assert.False(Directory.Exists(fx.Install("reshade-shaders")));
         Assert.True(File.Exists(fx.Install("EscapeFromTarkov_Data/Managed/Unity.VectorGraphics.dll")));
+    }
+
+    [Fact]
+    public void Redeploy_PromotesReshade2IniTutorial()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("Sharper", "1.1.3", new Dictionary<string, string>
+        {
+            ["dxgi.dll"] = "reshade-dll",
+            ["ReShade.ini"] = "[OVERLAY]\nTutorialProgress=0\n"
+        });
+
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request()).Status);
+        File.WriteAllText(fx.Install("ReShade2.ini"), "[OVERLAY]\nTutorialProgress=4\n");
+
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request()).Status);
+        Assert.Contains("TutorialProgress=4", File.ReadAllText(fx.Install("ReShade.ini")));
+        Assert.False(new FileInfo(fx.Install("ReShade.ini")).IsReadOnly);
     }
 
     [Fact]
@@ -116,6 +135,57 @@ public sealed class DeployEngineTests
         Assert.True(File.Exists(Path.Combine(ModStore.FilesDirectory(fx.ManagerData, "Drop", "1.0"), "BepInEx", "plugins", "Drop", "drop.dll")));
         Assert.Equal("spt-core", File.ReadAllText(fx.Install(SptLayout.BepInExPluginsSpt + "/spt-core.dll")));
         Assert.True(Directory.Exists(fx.Install(SptLayout.UserMods)));
+        Assert.False(Directory.Exists(fx.Install(SptLayout.UserMods + "/Drop")));
+    }
+
+    [Fact]
+    public void DisableServerMod_SkipsOverwriteLeftovers_AndRemovesFolder()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("Keep", "1.0", new Dictionary<string, string>
+        {
+            ["SPT_Runtime/user/mods/Keep/mod.dll"] = "keep"
+        });
+        fx.PutMod("WeekendDrops", "1.0", new Dictionary<string, string>
+        {
+            ["SPT_Runtime/user/mods/WeekendDrops/package.json"] = "{ }",
+            ["SPT_Runtime/user/mods/WeekendDrops/mod.dll"] = "drops"
+        });
+
+        Assert.Equal(
+            DeployStatus.Success,
+            fx.Engine.Deploy(fx.Request(fx.Enable(("Keep", "1.0", 0), ("WeekendDrops", "1.0", 1)))).Status);
+
+        var leftover = GamePath.Combine(
+            ProfilePaths.Overwrite(fx.ManagerData, ProfilePaths.DefaultProfileId),
+            "SPT_Runtime/user/mods/WeekendDrops/state.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(leftover)!);
+        File.WriteAllText(leftover, "{ }");
+
+        var disabled = fx.Engine.Deploy(fx.Request(fx.Enable(("Keep", "1.0", 0))));
+        Assert.Equal(DeployStatus.Success, disabled.Status);
+        Assert.False(Directory.Exists(fx.Install(SptLayout.UserMods + "/WeekendDrops")));
+        Assert.True(File.Exists(fx.Install(SptLayout.UserMods + "/Keep/mod.dll")));
+        Assert.Contains(disabled.Warnings, text => text.Contains("WeekendDrops", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void DisableLastServerMod_RemovesLeftoverEmptyUserModsFolder()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("WeekendDrops", "1.0", new Dictionary<string, string>
+        {
+            ["SPT_Runtime/user/mods/WeekendDrops/package.json"] = "{ }"
+        });
+        Directory.CreateDirectory(fx.Install(SptLayout.UserMods + "/WeekendDrops"));
+        Directory.CreateDirectory(fx.Install(SptLayout.UserMods + "/Hollow/nested"));
+
+        var result = fx.Engine.Deploy(fx.Request([]));
+        Assert.Equal(DeployStatus.Success, result.Status);
+        Assert.False(NtfsLinks.IsJunction(fx.Install(SptLayout.UserMods)));
+        Assert.True(Directory.Exists(fx.Install(SptLayout.UserMods)));
+        Assert.False(Directory.Exists(fx.Install(SptLayout.UserMods + "/WeekendDrops")));
+        Assert.False(Directory.Exists(fx.Install(SptLayout.UserMods + "/Hollow")));
     }
 
     [Fact]

@@ -15,7 +15,20 @@ public sealed class LaunchEngineTests
         Assert.True(result.Success, result.Message);
         Assert.Equal(["SPT.Server", "SPT.Launcher"], fx.Starter.Names);
         Assert.True(result.StartedServer);
+        Assert.Equal(1, fx.Ready.SnapshotCount);
         Assert.All(fx.Starter.Started, item => Assert.Equal(fx.Runtime, item.WorkingDirectory));
+    }
+
+    [Fact]
+    public void Solo_ReportsServerWaitThenLauncher()
+    {
+        using var fx = new LaunchFixture();
+        var steps = new List<string>();
+        var result = fx.Engine.Launch(fx.Request(LaunchModes.Solo), new SyncProgress<string>(steps.Add));
+        Assert.True(result.Success, result.Message);
+        Assert.Equal(
+            ["Starting SPT.Server…", "Waiting for SPT.Server to finish starting…", "Starting SPT.Launcher…"],
+            steps);
     }
 
     [Fact]
@@ -98,6 +111,20 @@ public sealed class LaunchEngineTests
     }
 
     [Fact]
+    public void ReadyProbe_IgnoresStaleServerHasStarted()
+    {
+        using var fx = new LaunchFixture();
+        var log = Path.Combine(fx.Runtime, "user", "logs", "spt", "spt-old.log");
+        Directory.CreateDirectory(Path.GetDirectoryName(log)!);
+        File.WriteAllText(log, "[Information] Server has started, happy playing\n");
+        var probe = new TcpOrLogReadyProbe();
+        var snapshot = probe.Snapshot(fx.GameRoot);
+        Assert.False(probe.WaitUntilReady(fx.GameRoot, TimeSpan.FromMilliseconds(200), snapshot));
+        File.AppendAllText(log, "[Information] Server has started, happy playing\n");
+        Assert.True(probe.WaitUntilReady(fx.GameRoot, TimeSpan.FromSeconds(2), snapshot));
+    }
+
+    [Fact]
     public void ProcessStarter_RefusesLiveEftAndBattlEye()
     {
         var starter = new ProcessStarter();
@@ -129,8 +156,15 @@ internal sealed class RecordingStarter : IProcessStarter
 internal sealed class StubReadyProbe : IServerReadyProbe
 {
     public bool Ready { get; set; } = true;
+    public int SnapshotCount { get; private set; }
 
-    public bool WaitUntilReady(string gameRoot, TimeSpan timeout) => Ready;
+    public ServerReadySnapshot Snapshot(string gameRoot)
+    {
+        SnapshotCount++;
+        return new ServerReadySnapshot();
+    }
+
+    public bool WaitUntilReady(string gameRoot, TimeSpan timeout, ServerReadySnapshot snapshot) => Ready;
 }
 
 internal sealed class LaunchFixture : IDisposable

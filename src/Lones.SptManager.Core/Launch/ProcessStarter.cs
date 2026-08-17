@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using Lones.SptManager.Core.Paths;
+using Lones.SptManager.Native;
 
 namespace Lones.SptManager.Core.Launch;
 
@@ -16,14 +17,31 @@ public sealed class ProcessStarter : IProcessStarter
             throw new InvalidOperationException("Refusing to start the live EFT client or BattlEye.");
         }
 
+        var isServer = name.Equals("SPT.Server", StringComparison.OrdinalIgnoreCase);
         var info = new ProcessStartInfo
         {
             FileName = exePath,
             WorkingDirectory = workingDirectory,
-            UseShellExecute = false
+            UseShellExecute = false,
+            RedirectStandardInput = isServer,
+            CreateNoWindow = false
         };
         var process = Process.Start(info)
                       ?? throw new InvalidOperationException("Failed to start " + exePath);
+        if (isServer)
+        {
+            try
+            {
+                process.StandardInput.Close();
+            }
+            catch (IOException)
+            {
+                // Closing stdin must not fail launch.
+            }
+
+            ConsoleLaunch.TryDisableQuickEdit(process.Id);
+        }
+
         return new StartedProcess
         {
             Name = name,
@@ -36,13 +54,23 @@ public sealed class ProcessStarter : IProcessStarter
 
 public sealed class TcpOrLogReadyProbe : IServerReadyProbe
 {
-    public bool WaitUntilReady(string gameRoot, TimeSpan timeout)
+    public ServerReadySnapshot Snapshot(string gameRoot)
+        => new() { LogLengths = LogLengths(gameRoot) };
+
+    public bool WaitUntilReady(string gameRoot, TimeSpan timeout, ServerReadySnapshot snapshot)
     {
         var port = ReadBackendPort(gameRoot);
         var deadline = DateTime.UtcNow + timeout;
+        var hadLogs = snapshot.LogLengths.Count > 0 || Directory.Exists(GamePath.Combine(gameRoot, SptLayout.UserLogs));
         while (DateTime.UtcNow < deadline)
         {
-            if (CanConnect("127.0.0.1", port) || LogSaysStarted(gameRoot))
+            if (LogSaysStartedSince(gameRoot, snapshot))
+            {
+                return true;
+            }
+
+            // First-run / no log folder: TCP is the only signal.
+            if (!hadLogs && CanConnect("127.0.0.1", port))
             {
                 return true;
             }
@@ -97,7 +125,31 @@ public sealed class TcpOrLogReadyProbe : IServerReadyProbe
         }
     }
 
-    private static bool LogSaysStarted(string gameRoot)
+    private static Dictionary<string, long> LogLengths(string gameRoot)
+    {
+        var lengths = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        var logs = GamePath.Combine(gameRoot, SptLayout.UserLogs);
+        if (!Directory.Exists(logs))
+        {
+            return lengths;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(logs, "*.log", SearchOption.AllDirectories))
+        {
+            try
+            {
+                lengths[file] = new FileInfo(file).Length;
+            }
+            catch (IOException)
+            {
+                // Log may still be locked by the server.
+            }
+        }
+
+        return lengths;
+    }
+
+    private static bool LogSaysStartedSince(string gameRoot, ServerReadySnapshot snapshot)
     {
         var logs = GamePath.Combine(gameRoot, SptLayout.UserLogs);
         if (!Directory.Exists(logs))
@@ -107,12 +159,23 @@ public sealed class TcpOrLogReadyProbe : IServerReadyProbe
 
         foreach (var file in Directory.EnumerateFiles(logs, "*.log", SearchOption.AllDirectories)
                      .OrderByDescending(File.GetLastWriteTimeUtc)
-                     .Take(5))
+                     .Take(8))
         {
             try
             {
-                var text = File.ReadAllText(file);
-                if (text.Contains("Server has started", StringComparison.OrdinalIgnoreCase))
+                var previous = snapshot.LogLengths.TryGetValue(file, out var length) ? length : 0L;
+                var info = new FileInfo(file);
+                if (info.Length <= previous)
+                {
+                    continue;
+                }
+
+                using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                stream.Seek(previous, SeekOrigin.Begin);
+                using var reader = new StreamReader(stream);
+                var added = reader.ReadToEnd();
+                if (added.Contains("Server has started", StringComparison.OrdinalIgnoreCase)
+                    || added.Contains("Started webserver", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }

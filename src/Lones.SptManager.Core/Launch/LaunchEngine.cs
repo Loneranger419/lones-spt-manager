@@ -24,7 +24,7 @@ public sealed class LaunchEngine
         _lock = processLock;
     }
 
-    public LaunchResult Launch(LaunchRequest request)
+    public LaunchResult Launch(LaunchRequest request, IProgress<string>? progress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.GameRoot);
         var gameRoot = Path.GetFullPath(request.GameRoot);
@@ -78,13 +78,16 @@ public sealed class LaunchEngine
         var runtime = GamePath.Combine(gameRoot, SptLayout.SptRuntime);
         if (LaunchModes.StartsServer(mode))
         {
+            progress?.Report("Starting SPT.Server…");
+            var snapshot = _ready.Snapshot(gameRoot);
             started.Add(_starter.Start(GamePath.Combine(gameRoot, SptLayout.SptServerExe), runtime));
-            if (!_ready.WaitUntilReady(gameRoot, request.ReadyTimeout))
+            progress?.Report("Waiting for SPT.Server to finish starting…");
+            if (!_ready.WaitUntilReady(gameRoot, request.ReadyTimeout, snapshot))
             {
                 return new LaunchResult
                 {
                     Success = false,
-                    Message = "SPT.Server did not become ready (TCP 6969 or 'Server has started' in logs).",
+                    Message = "SPT.Server did not finish starting (no new 'Server has started' log line).",
                     Started = started,
                     Warnings = warnings,
                     StartedServer = true
@@ -92,6 +95,7 @@ public sealed class LaunchEngine
             }
         }
 
+        progress?.Report("Starting SPT.Launcher…");
         started.Add(_starter.Start(GamePath.Combine(gameRoot, SptLayout.SptLauncherExe), runtime));
 
         if (!string.IsNullOrWhiteSpace(request.ManagerData))

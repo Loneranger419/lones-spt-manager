@@ -325,7 +325,10 @@
                 <TextBlock Text="{Binding BusyMessage}"
                            Foreground="{DynamicResource AccentTextBrush}"
                            FontWeight="SemiBold"
-                           HorizontalAlignment="Center" />
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="360" />
             </StackPanel>
         </Border>
     </Grid>

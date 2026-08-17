@@ -104,6 +104,8 @@ public sealed class HarvestEngine
         assigned.AddRange(PromoteOverwriteConfigs(managerData, profileId, store)
             .Select(path => new HarvestedFile { CanonicalPath = path, Sha256 = string.Empty }));
 
+        ReshadeState.PromoteSidecars(gameRoot);
+
         foreach (var (canonical, fullPath) in EnumerateHarvestable(gameRoot, managerData, profileId))
         {
             if (HarvestRules.ShouldIgnore(canonical, baseline))
@@ -400,6 +402,21 @@ public sealed class HarvestEngine
                 {
                     yield return (canonical, install);
                 }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(gameRoot) && Directory.Exists(gameRoot))
+        {
+            foreach (var file in Directory.EnumerateFiles(gameRoot, "ReShade*.ini"))
+            {
+                var canonical = GamePath.Normalize(Path.GetFileName(file));
+                if (copied.Contains(canonical) || !ReshadeState.IsStateFile(canonical))
+                {
+                    continue;
+                }
+
+                copied.Add(canonical);
+                yield return (canonical, file);
             }
         }
 

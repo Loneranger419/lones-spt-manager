@@ -204,6 +204,13 @@ public static class HarvestRules
             return exactPath;
         }
 
+        if (ReshadeState.IsStateFile(normalized))
+        {
+            return UniqueModKey(candidates.Where(document =>
+                document.Files.Any(file =>
+                    Path.GetFileName(file.CanonicalPath).Equals(ReshadeState.PrimaryIni, StringComparison.OrdinalIgnoreCase))));
+        }
+
         var prefix = TryPackagePrefix(normalized);
         if (prefix is not null && IsPinStyleFile(normalized))
         {

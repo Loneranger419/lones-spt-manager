@@ -69,6 +69,7 @@ public static class StagingMerger
                 var dest = GamePath.Combine(stagingRoot, destCanonical);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 File.Copy(source, dest, overwrite: true);
+                ReshadeState.ClearReadOnly(dest);
 
                 if (winners.TryGetValue(destCanonical, out var previous))
                 {
@@ -142,6 +143,7 @@ public static class StagingMerger
                 var dest = GamePath.Combine(stagingRoot, destCanonical);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 File.Copy(source, dest, overwrite: true);
+                ReshadeState.ClearReadOnly(dest);
 
                 if (winners.TryGetValue(destCanonical, out var previous)
                     && !previous.WinnerModKey.Equals(modKey, StringComparison.OrdinalIgnoreCase))
@@ -166,7 +168,11 @@ public static class StagingMerger
         return Finish(winners, conflicts, warnings);
     }
 
-    public static StagingMergeResult ApplyOverwrite(string stagingRoot, string overwriteRoot, StagingMergeResult current)
+    public static StagingMergeResult ApplyOverwrite(
+        string stagingRoot,
+        string overwriteRoot,
+        StagingMergeResult current,
+        IReadOnlySet<string>? skipOverlayFolders = null)
     {
         if (!Directory.Exists(overwriteRoot))
         {
@@ -189,9 +195,19 @@ public static class StagingMerger
             }
 
             var destCanonical = OverlayPlanner.WrapPluginCanonical(canonical);
+            var overlayFolder = OverlayPlanner.TryOverlayFolder(destCanonical);
+            if (overlayFolder is not null
+                && skipOverlayFolders is { Count: > 0 }
+                && skipOverlayFolders.Contains(overlayFolder))
+            {
+                warnings.Add("Overwrite skipped disabled package " + destCanonical);
+                continue;
+            }
+
             var dest = GamePath.Combine(stagingRoot, destCanonical);
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             File.Copy(file, dest, overwrite: true);
+            ReshadeState.ClearReadOnly(dest);
 
             if (winners.TryGetValue(destCanonical, out var previous))
             {

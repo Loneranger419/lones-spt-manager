@@ -78,6 +78,7 @@ public sealed class DeployEngine
         }
 
         var baseline = request.Baseline ?? new SptOwnedBaselineBuilder().Build(gameRoot);
+        ReshadeState.CaptureToProfile(gameRoot, managerData, profileId);
         var fingerprint = ComputeFingerprint(gameRoot, profileId, enabled, managerData);
         var last = TryReadManifest(ProfilePaths.Manifest(managerData, profileId));
         if (last is not null
@@ -130,6 +131,8 @@ public sealed class DeployEngine
 
             ApplyOverlays(managerData, profileId, gameRoot, stagingRoot, committed);
             EnsureStockUserDirs(gameRoot, committed);
+            IsolatedOverlay.SeedSptClientDefaults(ProfilePaths.BepInExConfig(managerData, profileId));
+            OverlayPlanner.PruneEmptyOverlayChildren(gameRoot);
             Verify(gameRoot, managerData, profileId, stagingRoot, committed, baseline);
             HarvestEngine.WriteBaseline(managerData, profileId, gameRoot, committed.CopiedFiles);
 
@@ -206,6 +209,8 @@ public sealed class DeployEngine
                 };
                 ApplyOverlays(managerData, profileId, gameRoot, stagingRoot, restored);
                 EnsureStockUserDirs(gameRoot, restored);
+                IsolatedOverlay.SeedSptClientDefaults(ProfilePaths.BepInExConfig(managerData, profileId));
+                OverlayPlanner.PruneEmptyOverlayChildren(gameRoot);
                 var baseline = new SptOwnedBaselineBuilder().Build(gameRoot);
                 Verify(gameRoot, managerData, profileId, stagingRoot, restored, baseline);
                 HarvestEngine.WriteBaseline(managerData, profileId, gameRoot, restored.CopiedFiles);
@@ -219,6 +224,7 @@ public sealed class DeployEngine
                 }
 
                 EnsureStockUserDirs(gameRoot, junctions: []);
+                OverlayPlanner.PruneEmptyOverlayChildren(gameRoot);
             }
 
             File.Delete(journalPath);
@@ -276,6 +282,7 @@ public sealed class DeployEngine
         }
 
         EnsureStockUserDirs(gameRoot, junctions: []);
+        OverlayPlanner.PruneEmptyOverlayChildren(gameRoot);
         var config = GamePath.Combine(gameRoot, SptLayout.BepInExConfig);
         if (!Directory.Exists(config) && !NtfsLinks.IsJunction(config))
         {
@@ -346,7 +353,42 @@ public sealed class DeployEngine
     {
         var merge = StagingMerger.Rebuild(managerData, stagingRoot, enabled);
         merge = StagingMerger.ApplyProfileRuntime(managerData, profileId, stagingRoot, enabled, merge);
-        return StagingMerger.ApplyOverwrite(stagingRoot, ProfilePaths.Overwrite(managerData, profileId), merge);
+        merge = StagingMerger.ApplyOverwrite(
+            stagingRoot,
+            ProfilePaths.Overwrite(managerData, profileId),
+            merge,
+            DisabledOverlayFolders(managerData, enabled));
+        OverlayPlanner.PruneEmptyOverlayChildren(stagingRoot);
+        return merge;
+    }
+
+    private static HashSet<string> DisabledOverlayFolders(string managerData, IReadOnlyList<EnabledMod> enabled)
+    {
+        var on = enabled
+            .Select(item => item.ModKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var enabledFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var disabledFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var document in ModStore.List(managerData))
+        {
+            if (!document.Deployable || HarvestRules.IsRuntimeVersion(document.Version))
+            {
+                continue;
+            }
+
+            var folders = OverlayPlanner.OverlayFolders(document.Files.Select(file => file.CanonicalPath));
+            if (on.Contains(document.ModKey))
+            {
+                enabledFolders.UnionWith(folders);
+            }
+            else
+            {
+                disabledFolders.UnionWith(folders);
+            }
+        }
+
+        disabledFolders.ExceptWith(enabledFolders);
+        return disabledFolders;
     }
 
     private static OverlayPlan BuildPlan(string managerData, string profileId, string stagingRoot)
@@ -365,6 +407,7 @@ public sealed class DeployEngine
         Add("\n");
         Add(profileId);
         Add("\n");
+        Add("skip-disabled-overlay\n");
         foreach (var mod in enabled.OrderBy(item => item.Priority).ThenBy(item => item.ModKey, StringComparer.OrdinalIgnoreCase))
         {
             Add($"{mod.ModKey}\0{mod.Version}\0{mod.Priority}\n");
@@ -587,6 +630,7 @@ public sealed class DeployEngine
             }
 
             File.Copy(source, dest);
+            ReshadeState.ClearReadOnly(dest);
         }
     }
 
