@@ -6,7 +6,7 @@
 
 A Windows manager for **SPT 4.1**. Mods stay **outside** the game folder. Each **profile** keeps its own enabled mods, load order, saves, configs, and leftover files. [The Forge](https://sp-mod.com/) is built in for search and install.
 
-Download the exe from [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases). This app is not listed on The Forge.
+Download the exe from [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases/latest/download/LonesSptManager.exe). This app is not listed on The Forge.
 
 **Note to Forge staff:** how this app uses your API is in [`docs/FORGE.md`](docs/FORGE.md).
 
