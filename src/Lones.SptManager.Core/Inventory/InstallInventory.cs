@@ -20,6 +20,7 @@ public sealed class InventoryItem
     public string? DisplayName { get; init; }
     public string? ThumbnailUrl { get; init; }
     public int? ForgeModId { get; init; }
+    public int? ForgeAddonId { get; init; }
     public int RuntimeFileCount { get; init; }
 }
 
@@ -86,6 +87,7 @@ public static class InstallInventory
                 DisplayName = document.DisplayName,
                 ThumbnailUrl = document.ThumbnailUrl,
                 ForgeModId = document.ForgeModId,
+                ForgeAddonId = document.ForgeAddonId,
                 RuntimeFileCount = runtimeFiles
             });
         }

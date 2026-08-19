@@ -66,7 +66,7 @@ The window blurs with a spinner during profile switch, Deploy, Harvest, and Laun
 ### Install mods
 
 - **The Forge** tab — search, select, **Install**. **Updates** checks what you already have. **Import zip** takes a `.zip` / `.7z` you already downloaded.
-- **Add profile → Install from pack** — HTTPS link or a local `mods.json`. List order is load order (0 first). Each entry needs a Forge `id` and `installedVersion`. Failed mods are skipped. Edit the profile later and **Update** to reinstall that pack.
+- **Add profile → Install from pack** — HTTPS link or a local `mods.json`. List order is load order (0 first). Each entry needs a Forge `id` and `installedVersion`. Forge addons use `"kind": "addon"` with the addon id (not the parent mod id). Failed mods are skipped. Edit the profile later and **Update** to reinstall that pack.
 
 A pack can copy from another profile **or** install from JSON, not both in one go.
 

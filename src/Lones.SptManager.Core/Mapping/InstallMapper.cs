@@ -211,6 +211,7 @@ public sealed class InstallMapper
             ModKey = options.ModKey,
             Version = version,
             ForgeModId = options.ForgeModId,
+            ForgeAddonId = options.ForgeAddonId,
             ForgeGuid = options.ForgeGuid
         };
         var document = _store.Write(managerData, map, extracted, writeOptions, archiveHash: null, sourceArchive: relative);

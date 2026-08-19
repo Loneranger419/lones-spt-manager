@@ -40,6 +40,49 @@ public sealed class ModPackInstallerTests
         Assert.Equal("Bosses Have Gp Coins", listed[0].DisplayName);
         Assert.Equal(1090, listed[1].Id);
         Assert.Equal("1.1.1", listed[1].RequestedVersion);
+        Assert.False(listed[0].IsAddon);
+        Assert.False(listed[1].IsAddon);
+    }
+
+    [Fact]
+    public void Parse_ReadsAddonKindAndTopLevelAddons_DedupesByKindAndId()
+    {
+        var manifest = ModPackManifest.Parse(
+            """
+            {
+              "mods": [
+                { "id": 1657, "name": "MergeConsumables", "installedVersion": "1.6.1" },
+                {
+                  "kind": "addon",
+                  "id": 4,
+                  "name": "Merge Consumables - Fika sync",
+                  "slug": "mergeconsumables-fika-sync",
+                  "installedVersion": "1.1.0"
+                },
+                { "id": 4, "name": "Some other mod 4", "installedVersion": "9.9.9" },
+                { "kind": "addon", "id": 4, "name": "dup addon in mods", "installedVersion": "0.0.1" }
+              ],
+              "addons": [
+                { "id": 4, "name": "dup from addons array", "installedVersion": "0.0.2" },
+                { "id": 8, "name": "Extra addon", "installedVersion": "2.0.0" }
+              ]
+            }
+            """);
+
+        var listed = manifest.ListedMods();
+        Assert.Equal(4, listed.Count);
+        Assert.Equal(1657, listed[0].Id);
+        Assert.False(listed[0].IsAddon);
+        Assert.Equal(4, listed[1].Id);
+        Assert.True(listed[1].IsAddon);
+        Assert.Equal("1.1.0", listed[1].RequestedVersion);
+        Assert.Equal("Merge Consumables - Fika sync", listed[1].DisplayName);
+        Assert.Equal(4, listed[2].Id);
+        Assert.False(listed[2].IsAddon);
+        Assert.Equal("Some other mod 4", listed[2].DisplayName);
+        Assert.Equal(8, listed[3].Id);
+        Assert.True(listed[3].IsAddon);
+        Assert.Equal("Extra addon", listed[3].DisplayName);
     }
 
     [Fact]
@@ -269,6 +312,84 @@ public sealed class ModPackInstallerTests
     }
 
     [Fact]
+    public async Task Install_Addon_UsesAddonApis_DoesNotTreatIdAsMod()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lones-pack-addon-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        PutStoreMod(root, "MergeConsumables", "1.6.1", forgeModId: 1657);
+        var zip = ZipFixture.WriteZip(
+            Path.Combine(root, "addon.zip"),
+            [("BepInEx/plugins/MergeConsumablesFika/MergeConsumablesFika.dll", "dll")]);
+        var bytes = File.ReadAllBytes(zip);
+        var pack = Path.Combine(root, "mods.json");
+        File.WriteAllText(
+            pack,
+            """
+            {
+              "mods": [
+                { "id": 1657, "name": "MergeConsumables", "installedVersion": "1.6.1" },
+                {
+                  "kind": "addon",
+                  "id": 4,
+                  "name": "Merge Consumables - Fika sync",
+                  "slug": "mergeconsumables-fika-sync",
+                  "installedVersion": "1.1.0"
+                }
+              ]
+            }
+            """);
+        var handler = new RouteHandler
+        {
+            ["GET /addon/4/versions"] =
+                "{\"success\":true,\"data\":[{\"id\":11,\"version\":\"1.1.0\",\"link\":\"https://sp-mod.com/addon/download/4/mergeconsumables-fika-sync/1.1.0\",\"content_length\":"
+                + bytes.Length
+                + ",\"spt_version_constraint\":\"~4.1\",\"fika_compatibility\":\"unknown\"}]}",
+            ["GET /addons/dependencies"] =
+                """{"success":true,"data":{"4:1.1.0":[{"id":2326,"guid":"com.fika.core","name":"Project Fika","slug":"project-fika","conflict":false,"latest_compatible_version":null,"dependencies":[]}]}}""",
+            ["GET /addon/4"] =
+                """{"success":true,"data":{"id":4,"mod_id":1657,"name":"Merge Consumables - Fika sync","slug":"mergeconsumables-fika-sync","thumbnail":"https://files.sp-mod.com/addons/4.png"}}""",
+            ["GET /addon/download/4/mergeconsumables-fika-sync/1.1.0"] = bytes
+        };
+
+        try
+        {
+            using var http = new HttpClient(handler) { BaseAddress = new Uri(ForgeEndpoints.ApiBase) };
+            using var client = new ForgeClient(http);
+            using var installer = new ModPackInstaller(client);
+            new ProfileStore().LoadOrCreate(root, "addon");
+            var result = await installer.InstallAsync(pack, root, "addon");
+            Assert.True(result.Success, result.Message);
+            Assert.Equal(1, result.Installed);
+            Assert.Equal(1, result.Reused);
+            Assert.Equal(0, result.Failed);
+            Assert.Contains(result.Warnings, line => line.Contains("Project Fika", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(handler.Requests, path => path.Contains("/mod/4", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(handler.Requests, path => path.Contains("/addon/4/versions", StringComparison.OrdinalIgnoreCase));
+
+            var document = ModStore.TryRead(root, "Merge Consumables - Fika sync", "1.1.0");
+            Assert.NotNull(document);
+            Assert.Equal(4, document!.ForgeAddonId);
+            Assert.Null(document.ForgeModId);
+            Assert.Equal("https://files.sp-mod.com/addons/4.png", document.ThumbnailUrl);
+            Assert.Null(ModStore.TryRead(root, "Project Fika", "2.4.1"));
+            var enabled = new ProfileStore().TryRead(root, "addon")!.Enabled
+                .OrderBy(item => item.Priority)
+                .ToArray();
+            Assert.Equal(2, enabled.Length);
+            Assert.Equal("MergeConsumables", enabled[0].ModKey);
+            Assert.Equal("Merge Consumables - Fika sync", enabled[1].ModKey);
+            Assert.DoesNotContain(enabled, item => item.ModKey.Contains("Fika", StringComparison.OrdinalIgnoreCase) && item.ModKey != "Merge Consumables - Fika sync");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Install_EmptyPackFails()
     {
         var root = Path.Combine(Path.GetTempPath(), "lones-pack-empty-" + Guid.NewGuid().ToString("N"));
@@ -293,7 +414,7 @@ public sealed class ModPackInstallerTests
         }
     }
 
-    private static void PutStoreMod(string managerData, string key, string version, int forgeModId)
+    private static void PutStoreMod(string managerData, string key, string version, int? forgeModId = null, int? forgeAddonId = null)
     {
         var dir = ModStore.PackageDirectory(managerData, key, version);
         Directory.CreateDirectory(Path.Combine(dir, "files", "BepInEx", "plugins", key));
@@ -305,6 +426,7 @@ public sealed class ModPackInstallerTests
             Kind = "Client",
             Deployable = true,
             ForgeModId = forgeModId,
+            ForgeAddonId = forgeAddonId,
             Files =
             [
                 new ModFileRecord
@@ -324,6 +446,8 @@ public sealed class ModPackInstallerTests
     {
         private readonly Dictionary<string, object> _routes = new(StringComparer.OrdinalIgnoreCase);
 
+        public List<string> Requests { get; } = [];
+
         public object this[string key]
         {
             set => _routes[key] = value;
@@ -332,6 +456,7 @@ public sealed class ModPackInstallerTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var uri = request.RequestUri;
+            Requests.Add(uri?.ToString() ?? "");
             var absolute = uri?.IsAbsoluteUri == true ? uri.ToString() : "";
             var path = uri is null
                 ? ""
@@ -345,14 +470,25 @@ public sealed class ModPackInstallerTests
 
             var key = request.Method.Method.ToUpperInvariant() + " /" + path;
             var absoluteKey = request.Method.Method.ToUpperInvariant() + " " + absolute;
+            object? matched = null;
+            var matchedLength = -1;
             foreach (var pair in _routes)
             {
                 if (absoluteKey.StartsWith(pair.Key, StringComparison.OrdinalIgnoreCase)
                     || key.StartsWith(pair.Key, StringComparison.OrdinalIgnoreCase)
                     || path.StartsWith(pair.Key.Split(' ', 2).Last().TrimStart('/'), StringComparison.OrdinalIgnoreCase))
                 {
-                    return Task.FromResult(ToResponse(pair.Value));
+                    if (pair.Key.Length > matchedLength)
+                    {
+                        matched = pair.Value;
+                        matchedLength = pair.Key.Length;
+                    }
                 }
+            }
+
+            if (matched is not null)
+            {
+                return Task.FromResult(ToResponse(matched));
             }
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)

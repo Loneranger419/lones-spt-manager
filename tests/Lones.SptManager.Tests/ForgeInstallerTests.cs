@@ -100,6 +100,55 @@ public sealed class ForgeInstallerTests
             Assert.True(result.Success, result.Message);
             Assert.Single(result.Documents);
             Assert.NotNull(ModStore.TryRead(root, result.Documents[0].ModKey, result.Documents[0].Version));
+            Assert.Equal(1343, result.Documents[0].ForgeModId);
+            Assert.Null(result.Documents[0].ForgeAddonId);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Install_Addon_UsesAddonEndpoints_SkipsNullCompatibleDep()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lones-forge-addon-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var zip = ZipFixture.WriteZip(
+            Path.Combine(root, "addon.zip"),
+            [("BepInEx/plugins/MergeConsumablesFika/MergeConsumablesFika.dll", "dll")]);
+        var bytes = File.ReadAllBytes(zip);
+        var handler = new RouteHandler
+        {
+            ["GET /addon/4/versions"] =
+                "{\"success\":true,\"data\":[{\"id\":11,\"version\":\"1.1.0\",\"link\":\"https://sp-mod.com/addon/download/4/mergeconsumables-fika-sync/1.1.0\",\"content_length\":"
+                + bytes.Length
+                + ",\"spt_version_constraint\":\"~4.1\",\"fika_compatibility\":\"unknown\"}]}",
+            ["GET /addons/dependencies"] =
+                """{"success":true,"data":{"4:1.1.0":[{"id":2326,"name":"Project Fika","slug":"project-fika","conflict":false,"latest_compatible_version":null,"dependencies":[]}]}}""",
+            ["GET /addon/4"] =
+                """{"success":true,"data":{"id":4,"mod_id":1657,"name":"Merge Consumables - Fika sync","thumbnail":"https://files.sp-mod.com/addons/4.png"}}""",
+            ["GET /addon/download/4/mergeconsumables-fika-sync/1.1.0"] = bytes
+        };
+        try
+        {
+            using var http = new HttpClient(handler) { BaseAddress = new Uri(ForgeEndpoints.ApiBase) };
+            using var client = new ForgeClient(http);
+            var result = await new ForgeInstaller(client).InstallAsync(
+                4,
+                root,
+                displayName: "Merge Consumables - Fika sync",
+                isAddon: true);
+            Assert.True(result.Success, result.Message);
+            Assert.Single(result.Documents);
+            Assert.Equal(4, result.Documents[0].ForgeAddonId);
+            Assert.Null(result.Documents[0].ForgeModId);
+            Assert.Contains(result.Warnings, line => line.Contains("Project Fika", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(handler.Requests, path => path.Contains("/mod/4", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(handler.Requests, path => path.Contains("/mods/dependencies", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
@@ -143,6 +192,8 @@ public sealed class ForgeInstallerTests
     {
         private readonly Dictionary<string, object> _routes = new(StringComparer.OrdinalIgnoreCase);
 
+        public List<string> Requests { get; } = [];
+
         public object this[string key]
         {
             set => _routes[key] = value;
@@ -150,6 +201,7 @@ public sealed class ForgeInstallerTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            Requests.Add(request.RequestUri?.ToString() ?? "");
             var path = request.RequestUri is null
                 ? ""
                 : request.RequestUri.IsAbsoluteUri
@@ -161,27 +213,38 @@ public sealed class ForgeInstallerTests
             }
 
             var key = request.Method.Method.ToUpperInvariant() + " /" + path;
+            object? matched = null;
+            var matchedLength = -1;
             foreach (var pair in _routes)
             {
                 if (key.StartsWith(pair.Key, StringComparison.OrdinalIgnoreCase)
                     || path.StartsWith(pair.Key.Split(' ', 2).Last().TrimStart('/'), StringComparison.OrdinalIgnoreCase))
                 {
-                    if (pair.Value is byte[] bytes)
+                    if (pair.Key.Length > matchedLength)
                     {
-                        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                        {
-                            Content = new ByteArrayContent(bytes)
-                            {
-                                Headers = { ContentType = new MediaTypeHeaderValue("application/octet-stream") }
-                            }
-                        });
+                        matched = pair.Value;
+                        matchedLength = pair.Key.Length;
                     }
-
-                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                    {
-                        Content = new StringContent((string)pair.Value, System.Text.Encoding.UTF8, "application/json")
-                    });
                 }
+            }
+
+            if (matched is byte[] bytes)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(bytes)
+                    {
+                        Headers = { ContentType = new MediaTypeHeaderValue("application/octet-stream") }
+                    }
+                });
+            }
+
+            if (matched is string json)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+                });
             }
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)

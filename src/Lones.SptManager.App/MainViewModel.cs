@@ -1593,14 +1593,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task HydrateMissingThumbnailsAsync()
     {
-        var missing = InventoryItems
+        var missingMods = InventoryItems
             .Select(row => row.Item)
-            .Where(item => item.Kind == InstallInventory.StoreKind && item.ForgeModId is > 0)
+            .Where(item => item.Kind == InstallInventory.StoreKind && item.ForgeModId is > 0 && item.ForgeAddonId is null)
             .Where(NeedsThumbnailHydration)
             .GroupBy(item => item.ForgeModId!.Value)
             .Select(group => group.First())
             .ToArray();
-        if (missing.Length == 0 || string.IsNullOrWhiteSpace(ManagerData) || _hydratingThumbnails)
+        var missingAddons = InventoryItems
+            .Select(row => row.Item)
+            .Where(item => item.Kind == InstallInventory.StoreKind && item.ForgeAddonId is > 0)
+            .Where(NeedsThumbnailHydration)
+            .GroupBy(item => item.ForgeAddonId!.Value)
+            .Select(group => group.First())
+            .ToArray();
+        if ((missingMods.Length == 0 && missingAddons.Length == 0)
+            || string.IsNullOrWhiteSpace(ManagerData)
+            || _hydratingThumbnails)
         {
             return;
         }
@@ -1610,39 +1619,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             using var client = new ForgeClient();
             var changed = false;
-            foreach (var item in missing)
+            foreach (var item in missingMods)
             {
-                try
-                {
-                    var thumb = ThumbnailCache.IsAllowedUrl(item.ThumbnailUrl) ? item.ThumbnailUrl : null;
-                    if (string.IsNullOrWhiteSpace(thumb) || string.IsNullOrWhiteSpace(item.DisplayName))
-                    {
-                        var details = await client.GetModAsync(item.ForgeModId!.Value).ConfigureAwait(true);
-                        thumb = ThumbnailCache.IsAllowedUrl(details?.Thumbnail) ? details!.Thumbnail : thumb;
-                        var name = string.IsNullOrWhiteSpace(details?.Name) ? null : details!.Name;
-                        if (thumb is not null || name is not null)
+                changed |= await HydrateOneThumbnailAsync(
+                        client,
+                        item,
+                        () => client.GetModAsync(item.ForgeModId!.Value),
+                        document => document.ForgeModId == item.ForgeModId && document.ForgeAddonId is null)
+                    .ConfigureAwait(true);
+            }
+
+            foreach (var item in missingAddons)
+            {
+                changed |= await HydrateOneThumbnailAsync(
+                        client,
+                        item,
+                        async () =>
                         {
-                            foreach (var document in ModStore.List(ManagerData)
-                                         .Where(doc => doc.ForgeModId == item.ForgeModId))
-                            {
-                                ThumbnailCache.WriteModJsonForgeInfo(ManagerData, document, name, thumb);
-                                changed = true;
-                            }
-                        }
-                    }
-
-                    if (thumb is not null && ThumbnailCache.TryLocalPath(ManagerData, thumb) is null)
-                    {
-                        await CacheOneThumbnailAsync(client, thumb).ConfigureAwait(true);
-                        changed = true;
-                    }
-
-                    await Task.Delay(250).ConfigureAwait(true);
-                }
-                catch (Exception)
-                {
-                    // One missing catalogue row must not stop the rest.
-                }
+                            var addon = await client.GetAddonAsync(item.ForgeAddonId!.Value).ConfigureAwait(true);
+                            return addon is null
+                                ? null
+                                : new ForgeMod { Id = addon.Id, Name = addon.Name, Thumbnail = addon.Thumbnail };
+                        },
+                        document => document.ForgeAddonId == item.ForgeAddonId)
+                    .ConfigureAwait(true);
             }
 
             if (changed)
@@ -1657,6 +1657,47 @@ public sealed class MainViewModel : INotifyPropertyChanged
         finally
         {
             _hydratingThumbnails = false;
+        }
+    }
+
+    private async Task<bool> HydrateOneThumbnailAsync(
+        ForgeClient client,
+        InventoryItem item,
+        Func<Task<ForgeMod?>> load,
+        Func<ModDocument, bool> match)
+    {
+        try
+        {
+            var thumb = ThumbnailCache.IsAllowedUrl(item.ThumbnailUrl) ? item.ThumbnailUrl : null;
+            var wrote = false;
+            if (string.IsNullOrWhiteSpace(thumb) || string.IsNullOrWhiteSpace(item.DisplayName))
+            {
+                var details = await load().ConfigureAwait(true);
+                thumb = ThumbnailCache.IsAllowedUrl(details?.Thumbnail) ? details!.Thumbnail : thumb;
+                var name = string.IsNullOrWhiteSpace(details?.Name) ? null : details!.Name;
+                if (thumb is not null || name is not null)
+                {
+                    foreach (var document in ModStore.List(ManagerData).Where(match))
+                    {
+                        ThumbnailCache.WriteModJsonForgeInfo(ManagerData, document, name, thumb);
+                    }
+
+                    wrote = true;
+                }
+            }
+
+            if (thumb is not null && ThumbnailCache.TryLocalPath(ManagerData, thumb) is null)
+            {
+                await CacheOneThumbnailAsync(client, thumb).ConfigureAwait(true);
+                wrote = true;
+            }
+
+            await Task.Delay(250).ConfigureAwait(true);
+            return wrote;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 

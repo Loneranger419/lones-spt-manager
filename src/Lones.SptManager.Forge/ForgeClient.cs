@@ -163,6 +163,22 @@ public sealed class ForgeClient : IDisposable
         return envelope.Data ?? new ForgeUpdates { SptVersion = sptVersion };
     }
 
+    public async Task<ForgeAddon?> GetAddonAsync(int addonId, CancellationToken cancellationToken = default)
+    {
+        var envelope = await GetJsonAsync<ForgeEnvelope<ForgeAddon>>("addon/" + addonId, cancellationToken)
+            .ConfigureAwait(false);
+        return envelope.Data;
+    }
+
+    public async Task<IReadOnlyList<ForgeVersion>> GetAddonVersionsAsync(int addonId, CancellationToken cancellationToken = default)
+    {
+        var envelope = await GetJsonAsync<ForgeEnvelope<List<ForgeVersion>>>(
+                $"addon/{addonId}/versions?sort=-version",
+                cancellationToken)
+            .ConfigureAwait(false);
+        return envelope.Data ?? [];
+    }
+
     public async Task<IReadOnlyList<ForgeAddon>> ListAddonsAsync(int modId, CancellationToken cancellationToken = default)
     {
         var path = "addons?filter[mod_id]=" + modId + "&include=versions&per_page=50";

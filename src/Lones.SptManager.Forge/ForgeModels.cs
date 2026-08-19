@@ -81,6 +81,8 @@ public sealed class ForgeAddon
     public int? ModId { get; set; }
     public string? Name { get; set; }
     public string? Slug { get; set; }
+    public string? Teaser { get; set; }
+    public string? Thumbnail { get; set; }
     public List<ForgeVersion> Versions { get; set; } = [];
 }
 

@@ -563,6 +563,13 @@
       "name": "Sharper Tushonka Better Life",
       "slug": "sharper-tushonka-better-life",
       "installedVersion": "1.1.3"
+    },
+    {
+      "kind": "addon",
+      "id": 4,
+      "name": "Merge Consumables - Fika sync",
+      "slug": "mergeconsumables-fika-sync",
+      "installedVersion": "1.1.0"
     }
   ]
 }

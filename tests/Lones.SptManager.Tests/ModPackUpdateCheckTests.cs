@@ -56,6 +56,60 @@ public sealed class ModPackUpdateCheckTests
         Assert.Equal(string.Empty, report.Summary);
     }
 
+    [Fact]
+    public void Compare_FlagsMissingAndNewerAddon_IgnoresModWithSameId()
+    {
+        var pack = ModPackManifest.Parse(
+            """
+            {
+              "mods": [
+                { "id": 1657, "name": "MergeConsumables", "installedVersion": "1.6.1" },
+                { "kind": "addon", "id": 4, "name": "Merge Consumables - Fika sync", "installedVersion": "1.2.0" }
+              ]
+            }
+            """);
+        var store = new[]
+        {
+            Doc("MergeConsumables", "1.6.1", 1657),
+            Doc("Some other mod 4", "9.9.9", 4),
+            AddonDoc("Merge Consumables - Fika sync", "1.1.0", 4)
+        };
+        var enabled = new[]
+        {
+            On("MergeConsumables", "1.6.1"),
+            On("Some other mod 4", "9.9.9"),
+            On("Merge Consumables - Fika sync", "1.1.0")
+        };
+
+        var report = ModPackUpdateCheck.Compare(pack, enabled, store);
+        Assert.True(report.HasUpdates);
+        Assert.Contains(
+            report.Changes,
+            item => item.DisplayName == "Merge Consumables - Fika sync"
+                    && item.Kind == ModPackUpdateReport.NewerVersion
+                    && item.CurrentVersion == "1.1.0"
+                    && item.PackVersion == "1.2.0");
+        Assert.DoesNotContain(report.Changes, item => item.DisplayName == "MergeConsumables");
+        Assert.DoesNotContain(report.Changes, item => item.DisplayName == "Some other mod 4");
+    }
+
+    [Fact]
+    public void Compare_MissingAddon_IsNewEvenIfModIdMatches()
+    {
+        var pack = ModPackManifest.Parse(
+            """
+            { "mods": [ { "kind": "addon", "id": 4, "name": "Merge Consumables - Fika sync", "installedVersion": "1.1.0" } ] }
+            """);
+        var report = ModPackUpdateCheck.Compare(
+            pack,
+            [On("Some other mod 4", "9.9.9")],
+            [Doc("Some other mod 4", "9.9.9", 4)]);
+        Assert.True(report.HasUpdates);
+        Assert.Contains(
+            report.Changes,
+            item => item.DisplayName == "Merge Consumables - Fika sync" && item.Kind == ModPackUpdateReport.NewMod);
+    }
+
     [Theory]
     [InlineData("1.2.0", "1.1.0", 1)]
     [InlineData("1.1.0", "1.2.0", -1)]
@@ -79,6 +133,18 @@ public sealed class ModPackUpdateCheckTests
             Kind = "Client",
             Deployable = true,
             ForgeModId = forgeId,
+            Files = [],
+            ImportedAtUtc = DateTimeOffset.UtcNow
+        };
+
+    private static ModDocument AddonDoc(string key, string version, int addonId)
+        => new()
+        {
+            ModKey = key,
+            Version = version,
+            Kind = "Client",
+            Deployable = true,
+            ForgeAddonId = addonId,
             Files = [],
             ImportedAtUtc = DateTimeOffset.UtcNow
         };

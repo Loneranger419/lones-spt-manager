@@ -17,6 +17,7 @@ public sealed class ModDocument
     public string? ArchiveHash { get; init; }
     public string? SourceArchive { get; init; }
     public int? ForgeModId { get; init; }
+    public int? ForgeAddonId { get; init; }
     public string? ForgeGuid { get; init; }
     public string? ThumbnailUrl { get; init; }
     public string? WrapperFolder { get; init; }

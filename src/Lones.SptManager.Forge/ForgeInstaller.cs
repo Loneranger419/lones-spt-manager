@@ -31,21 +31,24 @@ public sealed class ForgeInstaller
         bool includeAddons = true,
         bool fetchThumbnails = true,
         string? displayName = null,
+        bool isAddon = false,
         IProgress<string>? status = null,
         CancellationToken cancellationToken = default)
     {
-        if (ForgeRestrictedMods.IsRestricted(modId, name: displayName))
+        if (!isAddon && ForgeRestrictedMods.IsRestricted(modId, name: displayName))
         {
             return Fail(ForgeRestrictedMods.Reason(displayName));
         }
 
-        var versions = await _client.GetVersionsAsync(modId, cancellationToken).ConfigureAwait(false);
+        var versions = isAddon
+            ? await _client.GetAddonVersionsAsync(modId, cancellationToken).ConfigureAwait(false)
+            : await _client.GetVersionsAsync(modId, cancellationToken).ConfigureAwait(false);
         var chosen = requestedVersion is null
             ? ForgeClient.PickVersion(versions)
             : versions.FirstOrDefault(item => string.Equals(item.Version, requestedVersion, StringComparison.OrdinalIgnoreCase));
         if (chosen?.Version is null || chosen.Link is null)
         {
-            return Fail("No downloadable Forge version for mod " + modId + ".");
+            return Fail("No downloadable Forge version for " + (isAddon ? "addon " : "mod ") + modId + ".");
         }
 
         var warnings = new List<string>();
@@ -55,13 +58,15 @@ public sealed class ForgeInstaller
         }
 
         var key = modId + ":" + chosen.Version;
-        var trees = await _client.GetDependenciesAsync([key], sptVersion, cancellationToken).ConfigureAwait(false);
+        var trees = isAddon
+            ? await _client.GetAddonDependenciesAsync([key], sptVersion, cancellationToken).ConfigureAwait(false)
+            : await _client.GetDependenciesAsync([key], sptVersion, cancellationToken).ConfigureAwait(false);
         var nodes = trees.TryGetValue(key, out var list) ? ForgeClient.Flatten(list) : [];
         var conflict = nodes.FirstOrDefault(node => node.Conflict);
         if (conflict is not null)
         {
             return Fail(
-                $"Forge dependency conflict: {conflict.Name ?? conflict.Guid ?? conflict.Id?.ToString()} (AC-C2).",
+                $"Forge {(isAddon ? "addon " : "")}dependency conflict: {conflict.Name ?? conflict.Guid ?? conflict.Id?.ToString()} (AC-C2).",
                 warnings);
         }
 
@@ -69,6 +74,11 @@ public sealed class ForgeInstaller
         {
             (modId, null, null, chosen)
         };
+        var addonIds = new HashSet<int>();
+        if (isAddon)
+        {
+            addonIds.Add(modId);
+        }
         foreach (var node in nodes)
         {
             if (ForgeRestrictedMods.IsRestricted(node))
@@ -86,7 +96,7 @@ public sealed class ForgeInstaller
             downloads.Add((node.Id, node.Guid, node.Name, node.LatestCompatibleVersion));
         }
 
-        if (includeAddons)
+        if (includeAddons && !isAddon)
         {
             var addons = await _client.ListAddonsAsync(modId, cancellationToken).ConfigureAwait(false);
             foreach (var addon in addons)
@@ -116,6 +126,7 @@ public sealed class ForgeInstaller
                 }
 
                 downloads.Add((addon.Id, null, addon.Name, addonVersion));
+                addonIds.Add(addon.Id);
                 foreach (var node in addonNodes.Where(item => item.LatestCompatibleVersion?.Link is not null))
                 {
                     if (ForgeRestrictedMods.IsRestricted(node))
@@ -132,14 +143,25 @@ public sealed class ForgeInstaller
         var documents = new List<ModDocument>();
         var cache = Path.Combine(managerData, "cache", "forge");
         Directory.CreateDirectory(cache);
-        var catalogue = await TryGetModAsync(modId, cancellationToken).ConfigureAwait(false);
-        if (catalogue is not null && ForgeRestrictedMods.IsRestricted(catalogue))
+        string? thumbnailUrl = null;
+        string? primaryName = displayName;
+        if (isAddon)
         {
-            return Fail(ForgeRestrictedMods.Reason(catalogue.Name), warnings);
+            var addon = await TryGetAddonAsync(modId, cancellationToken).ConfigureAwait(false);
+            thumbnailUrl = ThumbnailCache.IsAllowedUrl(addon?.Thumbnail) ? addon!.Thumbnail : null;
+            primaryName = FirstNonEmpty(displayName, addon?.Name);
         }
+        else
+        {
+            var catalogue = await TryGetModAsync(modId, cancellationToken).ConfigureAwait(false);
+            if (catalogue is not null && ForgeRestrictedMods.IsRestricted(catalogue))
+            {
+                return Fail(ForgeRestrictedMods.Reason(catalogue.Name), warnings);
+            }
 
-        var thumbnailUrl = ThumbnailCache.IsAllowedUrl(catalogue?.Thumbnail) ? catalogue!.Thumbnail : null;
-        var primaryName = FirstNonEmpty(displayName, catalogue?.Name);
+            thumbnailUrl = ThumbnailCache.IsAllowedUrl(catalogue?.Thumbnail) ? catalogue!.Thumbnail : null;
+            primaryName = FirstNonEmpty(displayName, catalogue?.Name);
+        }
         foreach (var item in downloads)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -150,7 +172,7 @@ public sealed class ForgeInstaller
             }
 
             var label = item.Name ?? primaryName ?? ("mod " + item.Id);
-            var dest = Path.Combine(cache, Sanitize(item.Id + "-" + item.Version.Version) + ".zip");
+            var dest = Path.Combine(cache, Sanitize((item.Id is int destId && addonIds.Contains(destId) ? "addon-" : "") + item.Id + "-" + item.Version.Version) + ".zip");
             var downloadProgress = status is null
                 ? null
                 : new Progress<DownloadProgress>(update => status.Report("Downloading " + label + " — " + update.Display));
@@ -169,7 +191,8 @@ public sealed class ForgeInstaller
                     new MapperOptions
                     {
                         AllowLowConfidence = true,
-                        ForgeModId = item.Id,
+                        ForgeModId = item.Id is int importId && addonIds.Contains(importId) ? null : item.Id,
+                        ForgeAddonId = item.Id is int addonId && addonIds.Contains(addonId) ? addonId : null,
                         ForgeGuid = item.Guid,
                         Version = item.Version.Version,
                         ModKey = item.Name ?? (item.Id == modId ? primaryName : null),
@@ -212,6 +235,7 @@ public sealed class ForgeInstaller
     public async Task<string> CheckUpdatesAsync(string managerData, string sptVersion, CancellationToken cancellationToken = default)
     {
         var pairs = ModStore.List(managerData)
+            .Where(document => document.ForgeAddonId is null)
             .Where(document => document.ForgeModId is not null || !string.IsNullOrWhiteSpace(document.ForgeGuid))
             .Select(document => (document.ForgeModId?.ToString() ?? document.ForgeGuid!) + ":" + document.Version)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -250,6 +274,18 @@ public sealed class ForgeInstaller
         try
         {
             return await _client.GetModAsync(modId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private async Task<ForgeAddon?> TryGetAddonAsync(int addonId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _client.GetAddonAsync(addonId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)
         {

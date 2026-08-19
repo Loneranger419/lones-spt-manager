@@ -92,16 +92,19 @@ public sealed class ModPackInstaller : IDisposable
 
                 try
                 {
-                    var existing = FindInStore(store, entry.Id, entry.RequestedVersion);
+                    var existing = FindInStore(store, entry);
                     if (existing is not null)
                     {
                         order.Add((existing.ModKey, existing.Version));
-                        if (existing.ForgeModId is int reusedId)
+                        if (!entry.IsAddon && existing.ForgeModId is int reusedId)
                         {
                             packForgeIds.Add(reusedId);
                         }
 
-                        packForgeIds.Add(entry.Id);
+                        if (!entry.IsAddon)
+                        {
+                            packForgeIds.Add(entry.Id);
+                        }
                         reused++;
                         continue;
                     }
@@ -125,7 +128,9 @@ public sealed class ModPackInstaller : IDisposable
                         continue;
                     }
 
-                    var document = result.Documents.FirstOrDefault(item => item.ForgeModId == entry.Id)
+                    var document = (entry.IsAddon
+                                       ? result.Documents.FirstOrDefault(item => item.ForgeAddonId == entry.Id)
+                                       : result.Documents.FirstOrDefault(item => item.ForgeModId == entry.Id && item.ForgeAddonId is null))
                                    ?? result.Documents.FirstOrDefault();
                     if (document is null || !document.Deployable)
                     {
@@ -137,12 +142,15 @@ public sealed class ModPackInstaller : IDisposable
                     }
 
                     order.Add((document.ModKey, document.Version));
-                    if (document.ForgeModId is int installedId)
+                    if (!entry.IsAddon && document.ForgeModId is int installedId)
                     {
                         packForgeIds.Add(installedId);
                     }
 
-                    packForgeIds.Add(entry.Id);
+                    if (!entry.IsAddon)
+                    {
+                        packForgeIds.Add(entry.Id);
+                    }
                     installed++;
                     store = ModStore.List(managerData);
                     Report(progress, $"Pack {i + 1}/{listed.Count}: {label}", i + 1, listed.Count);
@@ -224,6 +232,7 @@ public sealed class ModPackInstaller : IDisposable
                         includeAddons: false,
                         fetchThumbnails: false,
                         displayName: entry.DisplayName,
+                        isAddon: entry.IsAddon,
                         status: status,
                         cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
@@ -260,15 +269,17 @@ public sealed class ModPackInstaller : IDisposable
             LogLine = logLine
         });
 
-    private static ModDocument? FindInStore(IReadOnlyList<ModDocument> store, int forgeModId, string? version)
+    private static ModDocument? FindInStore(IReadOnlyList<ModDocument> store, ModPackEntry entry)
     {
-        var matches = store.Where(document => document.ForgeModId == forgeModId && document.Deployable);
-        if (string.IsNullOrWhiteSpace(version))
+        var matches = entry.IsAddon
+            ? store.Where(document => document.Deployable && document.ForgeAddonId == entry.Id)
+            : store.Where(document => document.Deployable && document.ForgeModId == entry.Id && document.ForgeAddonId is null);
+        if (string.IsNullOrWhiteSpace(entry.RequestedVersion))
         {
             return matches.FirstOrDefault();
         }
 
-        return matches.FirstOrDefault(document => VersionEquals(document.Version, version));
+        return matches.FirstOrDefault(document => VersionEquals(document.Version, entry.RequestedVersion));
     }
 
     public static bool VersionEquals(string? left, string? right)

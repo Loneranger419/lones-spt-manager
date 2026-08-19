@@ -65,7 +65,7 @@ public static class ModPackUpdateCheck
                 continue;
             }
 
-            var current = TryEnabledVersion(entry.Id, onProfile, store);
+            var current = TryEnabledVersion(entry, onProfile, store);
             if (current is null)
             {
                 changes.Add(new ModPackUpdateChange
@@ -152,12 +152,15 @@ public static class ModPackUpdateCheck
     }
 
     private static string? TryEnabledVersion(
-        int forgeModId,
+        ModPackEntry entry,
         IReadOnlyList<EnabledMod> enabled,
         IReadOnlyList<ModDocument> store)
     {
         var keys = store
-            .Where(document => document.Deployable && document.ForgeModId == forgeModId)
+            .Where(document => document.Deployable)
+            .Where(document => entry.IsAddon
+                ? document.ForgeAddonId == entry.Id
+                : document.ForgeModId == entry.Id && document.ForgeAddonId is null)
             .Select(document => document.ModKey)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return enabled

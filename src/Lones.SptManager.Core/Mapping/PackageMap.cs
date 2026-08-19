@@ -47,6 +47,7 @@ public sealed class MapperOptions
     public string? DisplayName { get; init; }
     public string? Version { get; init; }
     public int? ForgeModId { get; init; }
+    public int? ForgeAddonId { get; init; }
     public string? ForgeGuid { get; init; }
     public string? ThumbnailUrl { get; init; }
 }

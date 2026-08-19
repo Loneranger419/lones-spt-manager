@@ -10,25 +10,46 @@ public sealed class ModPackManifest
     public string? Title { get; set; }
     public string? ProfileName { get; set; }
     public List<ModPackEntry> Mods { get; set; } = [];
+    public List<ModPackEntry> Addons { get; set; } = [];
 
     public string? SuggestedProfileName
         => FirstNonEmpty(Name, Title, ProfileName);
 
     public IReadOnlyList<ModPackEntry> ListedMods()
     {
-        var seen = new HashSet<int>();
+        var seen = new HashSet<(bool Addon, int Id)>();
         var list = new List<ModPackEntry>();
         foreach (var entry in Mods)
         {
-            if (entry.Id <= 0 || !seen.Add(entry.Id))
-            {
-                continue;
-            }
+            TryAdd(list, seen, entry, forceAddon: false);
+        }
 
-            list.Add(entry);
+        foreach (var entry in Addons)
+        {
+            TryAdd(list, seen, entry, forceAddon: true);
         }
 
         return list;
+    }
+
+    private static void TryAdd(
+        List<ModPackEntry> list,
+        HashSet<(bool Addon, int Id)> seen,
+        ModPackEntry entry,
+        bool forceAddon)
+    {
+        if (entry.Id <= 0)
+        {
+            return;
+        }
+
+        var addon = forceAddon || entry.IsAddon;
+        if (!seen.Add((addon, entry.Id)))
+        {
+            return;
+        }
+
+        list.Add(forceAddon && !entry.IsAddon ? entry.AsAddon() : entry);
     }
 
     public static ModPackManifest Parse(string json)
@@ -57,6 +78,7 @@ public sealed class ModPackManifest
 public sealed class ModPackEntry
 {
     public int Id { get; set; }
+    public string? Kind { get; set; }
     public string? Name { get; set; }
     public string? Slug { get; set; }
     public string? Side { get; set; }
@@ -66,11 +88,29 @@ public sealed class ModPackEntry
     public string? SettingsNotes { get; set; }
 
     [JsonIgnore]
+    public bool IsAddon
+        => string.Equals(Kind, "addon", StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
     public string? RequestedVersion
         => string.IsNullOrWhiteSpace(InstalledVersion) ? Version : InstalledVersion;
 
     [JsonIgnore]
-    public string DisplayName => Name ?? Slug ?? ("mod " + Id);
+    public string DisplayName => Name ?? Slug ?? ((IsAddon ? "addon " : "mod ") + Id);
+
+    public ModPackEntry AsAddon()
+        => new()
+        {
+            Id = Id,
+            Kind = "addon",
+            Name = Name,
+            Slug = Slug,
+            Side = Side,
+            InstalledVersion = InstalledVersion,
+            Version = Version,
+            Description = Description,
+            SettingsNotes = SettingsNotes
+        };
 }
 
 public static class ModPackSource

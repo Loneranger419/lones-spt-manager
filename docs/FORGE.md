@@ -21,7 +21,7 @@ Calls happen when the player searches, installs, or clicks **Updates**. Nothing 
 | Action | Endpoints |
 | --- | --- |
 | Search | `GET /mods` (`per_page` ≤ 50) |
-| Install | `GET /mod/{id}/versions`, `/mods/dependencies`, `/addons`, `/addons/dependencies`, `/mod/{id}` |
+| Install | `GET /mod/{id}/versions`, `/mods/dependencies`, `/addon/{id}`, `/addon/{id}/versions`, `/addons`, `/addons/dependencies`, `/mod/{id}` |
 | Updates | `GET /mods/updates` |
 
 Archives use the version `link` you return. They stay on the player's PC for their own SPT install. We do not rehost or upload them. Thumbnails come only from `sp-mod.com` / `files.sp-mod.com` and are cached locally. Same version is not downloaded again if we already have it.
