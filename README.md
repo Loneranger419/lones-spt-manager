@@ -35,7 +35,7 @@ AI coding tools wrote a large part of this app. That is why it is not on The For
 2. Download the latest **zip** from [GitHub Releases](https://github.com/Loneranger419/lones-spt-manager/releases).
 3. Extract it somewhere **that is not** your SPT game folder. Put `LonesSptManager.exe` on the desktop or in its own folder.
 4. Run `LonesSptManager.exe`. No extra .NET install is required.
-5. If Windows says **Windows protected your PC**, that is common for an unsigned exe. Use **More info → Run anyway** only if you trust the download. [VirusTotal report for V0.1.6](https://www.virustotal.com/gui/file/b1baa5f55f66f166e0b316edc022dd894c7a3d9ccd30cc4d408789943bc4938c).
+5. If Windows says **Windows protected your PC**, that is common for an unsigned exe. Use **More info → Run anyway** only if you trust the download. [VirusTotal report for V0.1.7](https://www.virustotal.com/gui/file/f068c4abd92cb8af9823272e725a5f7d1758ff6de9f1ba12aeb07783474c3444).
 6. **Bind** the SPT game root (the same folder as `EscapeFromTarkov.exe`). Manager data defaults to `%AppData%\LonesSptManager`.
 7. Add a **profile** (or keep the first one) and start installing mods.
 
@@ -139,7 +139,7 @@ That menu is Configuration Manager (it ships with SPT). An empty profile `BepInE
 Read the Log tab. Other mods still install. Try again, or install that one from **The Forge** tab.
 
 **Windows blocked the exe.**
-Unsigned indie builds often trip SmartScreen. Use **More info → Run anyway** only if you got the file from the GitHub Release. Each release has a [VirusTotal report](https://www.virustotal.com/gui/file/b1baa5f55f66f166e0b316edc022dd894c7a3d9ccd30cc4d408789943bc4938c) (V0.1.6).
+Unsigned indie builds often trip SmartScreen. Use **More info → Run anyway** only if you got the file from the GitHub Release. Each release has a [VirusTotal report](https://www.virustotal.com/gui/file/f068c4abd92cb8af9823272e725a5f7d1758ff6de9f1ba12aeb07783474c3444) (V0.1.7).
 
 **Does Purge delete Tarkov / SPT?**
 No. It only removes this manager’s data (store, profiles, cache, settings). Bind again afterward. If you keep `LonesSptManager.exe` in that same folder, Purge leaves the exe there.
