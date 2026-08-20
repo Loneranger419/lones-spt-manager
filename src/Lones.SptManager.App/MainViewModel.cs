@@ -45,6 +45,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private AppUpdateInfo? _appUpdate;
     private CancellationTokenSource? _appCheckCts;
     private bool _checkingAppUpdate;
+    private bool _undeployOnExit = true;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -55,6 +56,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DeployCommand = new RelayCommand(Deploy, () => !_busy && !string.IsNullOrWhiteSpace(GameRoot) && !string.IsNullOrWhiteSpace(ManagerData));
         RepairCommand = new RelayCommand(Repair, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
         HarvestCommand = new RelayCommand(Harvest, () => !_busy && !string.IsNullOrWhiteSpace(GameRoot) && !string.IsNullOrWhiteSpace(ManagerData));
+        UndeployCommand = new RelayCommand(Undeploy, () => !_busy && !string.IsNullOrWhiteSpace(GameRoot) && !string.IsNullOrWhiteSpace(ManagerData));
         AddProfileCommand = new RelayCommand(AddProfile, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
         EditProfileCommand = new RelayCommand(EditProfile, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData) && !string.IsNullOrWhiteSpace(ProfileId));
         DiscardOverwriteCommand = new RelayCommand(DiscardOverwrite, () => !_busy && !string.IsNullOrWhiteSpace(ManagerData));
@@ -86,6 +88,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CollectionViewSource.GetDefaultView(InventoryItems).Filter = MatchesModFilter;
         RestoreLastInstance();
         RestoreLastProfile();
+        _undeployOnExit = AppSettings.LoadUndeployOnExit(InstanceStore.DefaultManagerDataPath);
         RefreshProfiles();
         LoadProfileLaunchSettings();
         RefreshInventory();
@@ -140,6 +143,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             QueuePackUpdateCheck();
             _ = ApplySelectedProfileAsync();
         }
+    }
+
+    public bool UndeployOnExit
+    {
+        get => _undeployOnExit;
+        set => Set(ref _undeployOnExit, value);
     }
 
     public bool IsBusy
@@ -314,6 +323,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand DeployCommand { get; }
     public ICommand RepairCommand { get; }
     public ICommand HarvestCommand { get; }
+    public ICommand UndeployCommand { get; }
     public ICommand AddProfileCommand { get; }
     public ICommand EditProfileCommand { get; }
     public ICommand DiscardOverwriteCommand { get; }
@@ -532,16 +542,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private async void Deploy()
         => await DeployAsync("Deploying…").ConfigureAwait(true);
 
-    private async Task DeployAsync(string message)
+    private async Task<DeployResult?> DeployAsync(string message, bool alreadyBusy = false)
     {
-        if (IsBusy)
+        if (IsBusy && !alreadyBusy)
         {
-            return;
+            return null;
         }
 
         BusyMessage = message;
-        IsBusy = true;
-        await Task.Yield();
+        if (!alreadyBusy)
+        {
+            IsBusy = true;
+            await Task.Yield();
+        }
+
         try
         {
             var gameRoot = GameRoot;
@@ -569,14 +583,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             RefreshInventory();
+            return result;
         }
         catch (Exception ex)
         {
             Status = "Deploy failed: " + ex.Message;
+            return new DeployResult { Status = DeployStatus.Failed, Message = Status };
         }
         finally
         {
-            IsBusy = false;
+            if (!alreadyBusy)
+            {
+                IsBusy = false;
+            }
         }
     }
 
@@ -650,6 +669,94 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 IsBusy = false;
             }
         }
+    }
+
+    private async void Undeploy()
+        => await UndeployAsync().ConfigureAwait(true);
+
+    private async Task UndeployAsync(bool alreadyBusy = false)
+    {
+        if (IsBusy && !alreadyBusy)
+        {
+            return;
+        }
+
+        BusyMessage = "Un-Deploying…";
+        if (!alreadyBusy)
+        {
+            IsBusy = true;
+            await Task.Yield();
+        }
+
+        try
+        {
+            var result = await Task.Run(() => new DeployEngine().DetachAll(GameRoot, ManagerData))
+                .ConfigureAwait(true);
+            Status = result.Message ?? result.Status.ToString();
+            if (result.Status == DeployStatus.BlockedProcesses)
+            {
+                var owner = System.Windows.Application.Current?.MainWindow;
+                System.Windows.MessageBox.Show(
+                    owner,
+                    "Quit SPT first (server, launcher, and the game), then Un-Deploy.",
+                    "Un-Deploy",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+            }
+
+            RefreshInventory();
+        }
+        catch (Exception ex)
+        {
+            Status = "Un-Deploy failed: " + ex.Message;
+        }
+        finally
+        {
+            if (!alreadyBusy)
+            {
+                IsBusy = false;
+            }
+        }
+    }
+
+    public bool TryUndeployOnExit()
+    {
+        if (!UndeployOnExit
+            || string.IsNullOrWhiteSpace(GameRoot)
+            || string.IsNullOrWhiteSpace(ManagerData)
+            || !Directory.Exists(GameRoot))
+        {
+            return true;
+        }
+
+        try
+        {
+            var result = new DeployEngine().DetachAll(GameRoot, ManagerData);
+            if (result.Status == DeployStatus.BlockedProcesses)
+            {
+                var owner = System.Windows.Application.Current?.MainWindow;
+                System.Windows.MessageBox.Show(
+                    owner,
+                    "Quit SPT first (server, launcher, and the game), then close this app so Un-Deploy can clean the install.",
+                    "Un-Deploy",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            var owner = System.Windows.Application.Current?.MainWindow;
+            System.Windows.MessageBox.Show(
+                owner,
+                "Un-Deploy on close failed: " + ex.Message,
+                "Un-Deploy",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+            return false;
+        }
+
+        return true;
     }
 
     private void AddProfile()
@@ -1437,13 +1544,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        BusyMessage = LaunchModes.StartsServer(LaunchMode)
-            ? "Starting SPT.Server…"
-            : "Starting SPT.Launcher…";
+        BusyMessage = "Deploying…";
         IsBusy = true;
         await Task.Yield();
         try
         {
+            var deployed = await DeployAsync("Deploying…", alreadyBusy: true).ConfigureAwait(true);
+            if (deployed is null
+                || deployed.Status is DeployStatus.Failed or DeployStatus.BlockedProcesses)
+            {
+                return;
+            }
+
+            BusyMessage = LaunchModes.StartsServer(LaunchMode)
+                ? "Starting SPT.Server…"
+                : "Starting SPT.Launcher…";
             var request = new LaunchRequest
             {
                 GameRoot = GameRoot,

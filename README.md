@@ -43,7 +43,7 @@ AI coding tools wrote a large part of this app. That is why it is not on The For
 
 ### Remove it
 
-1. In the app, **Settings → Purge manager data** if you want the junctions and cached mods gone. That does **not** delete your SPT install.
+1. In the app, **Settings → Purge manager data** if you want the junctions and cached mods gone. That does **not** delete your SPT install, and it will not delete `LonesSptManager.exe` (or `mods.json.example`) if those files sit in the manager data folder.
 2. Close the app and delete `LonesSptManager.exe` (and the folder you extracted).
 3. Optional: delete `%AppData%\LonesSptManager`.
 
@@ -57,11 +57,11 @@ After a purge, **Bind** again if you still want to use the manager.
 
 1. Pick a **profile** at the top. Switching deploys that profile onto the game.
 2. Enable or disable mods on the left list. Drag to change **load order** (0 at the top loads first; later rows win when files overlap).
-3. **Deploy** (under the installed list) if you changed mods and are not about to launch.
-4. **Solo**, **Fika host**, or **Fika join**. Solo / Fika host start the server first and wait until the log says it has started, then open the launcher. The spinner says which of those it is waiting on, then stays up until that session’s server and/or client have quit, then **Harvest** runs on its own. The server console is started so it does not sit waiting for Enter (inherited stdin / Quick Edit).
+3. **Deploy** (under the installed list) if you changed mods and are not about to launch. **Un-Deploy** only unlinks the install (junctions and copied leftovers). It does not Harvest — configs already live in the profile through those links. Store and profiles stay. Closing the app does the same by default; turn that off in **Settings**.
+4. **Solo**, **Fika host**, or **Fika join**. Launch deploys the current profile first, then starts the server (solo / Fika host) and waits until the log says it has started, then opens the launcher. The spinner says which of those it is waiting on, then stays up until that session’s server and/or client have quit, then **Harvest** runs on its own. The server console is started so it does not sit waiting for Enter (inherited stdin / Quick Edit).
 5. Use **Harvest** on the installed list if you played without launching from this app.
 
-The window blurs with a spinner during profile switch, Deploy, Harvest, and Launch. Wait it out.
+The window blurs with a spinner during profile switch, Deploy, Un-Deploy, Harvest, and Launch. Wait it out.
 
 ### Install mods
 
@@ -90,7 +90,7 @@ If SPT already has real folders in `BepInEx\plugins` or `SPT_Runtime\user\mods`,
 
 ### Other buttons
 
-- **Settings** — theme (follow Windows, Dark, or Light), manager data folder, **Purge manager data**, **Repair** (stuck or half-applied deploy), and **Check for updates**.
+- **Settings** — theme (follow Windows, Dark, or Light), manager data folder, **Purge manager data**, **Repair** (stuck or half-applied deploy), **Remove junctions when the app closes**, and **Check for updates**.
 - **App update** — appears in the header when a newer GitHub Release exists. It downloads the zip, replaces `LonesSptManager.exe`, and restarts. Manager data and the SPT install stay put.
 - **Bind** — next to the game root. Point the manager at this SPT install.
 
@@ -142,13 +142,16 @@ Read the Log tab. Other mods still install. Try again, or install that one from 
 Unsigned indie builds often trip SmartScreen. Use **More info → Run anyway** only if you got the file from the GitHub Release. Each release has a [VirusTotal report](https://www.virustotal.com/gui/file/b1baa5f55f66f166e0b316edc022dd894c7a3d9ccd30cc4d408789943bc4938c) (V0.1.6).
 
 **Does Purge delete Tarkov / SPT?**
-No. It only removes this manager’s data. Bind again afterward.
+No. It only removes this manager’s data (store, profiles, cache, settings). Bind again afterward. If you keep `LonesSptManager.exe` in that same folder, Purge leaves the exe there.
 
 **Linux / Steam Deck?**
 Windows only.
 
 **How do I switch dark mode?**
-**Settings** (top right). Theme can follow Windows, or stay Dark / Light. The manager data folder, **Purge manager data**, **Repair**, and **Check for updates** are in the same window. Unchecked mods in the list are greyed out.
+**Settings** (top right). Theme can follow Windows, or stay Dark / Light. The manager data folder, **Purge manager data**, **Repair**, **Remove junctions when the app closes**, and **Check for updates** are in the same window. Unchecked mods in the list are greyed out.
+
+**I closed the app and SPT looks vanilla.**
+That is **Un-Deploy**. Closing unlinks the install by default (same as the button). **Deploy** or **Solo** / **Fika host** / **Fika join** puts the profile back. Uncheck **Remove junctions when the app closes** in Settings if you want the install to stay deployed after quit. If SPT (server, launcher, or the game) is still running, Un-Deploy and close will tell you to quit those first.
 
 **Will the app update itself?**
 On launch it asks GitHub if a newer Release exists. **App update** (or **Settings → Install update**) downloads that zip, replaces the exe, and restarts. It does not touch manager data or the SPT folder. **Settings → Check for updates** only checks. If the folder is not writable, open the GitHub Release and replace the exe yourself.

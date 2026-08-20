@@ -396,6 +396,71 @@ public sealed class DeployEngineTests
         Assert.Equal("spt-core", File.ReadAllText(fx.Install(SptLayout.BepInExPluginsSpt + "/spt-core.dll")));
         Assert.False(File.Exists(Path.Combine(ProfilePaths.Staging(fx.ManagerData, ProfilePaths.DefaultProfileId), "BepInEx", "plugins", "spt", "spt-core.dll")));
     }
+
+    [Fact]
+    public void DetachAll_RemovesJunctionsAndCopies_KeepsStoreAndSptOwned()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("Talk", "1.0", new Dictionary<string, string>
+        {
+            ["BepInEx/plugins/Talk/talk.dll"] = "client",
+            ["SPT_Runtime/user/mods/Talk/mod.dll"] = "server",
+            ["dxgi.dll"] = "reshade"
+        });
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request()).Status);
+        Assert.True(NtfsLinks.IsJunction(fx.Install("BepInEx/plugins/Talk")));
+        Assert.True(NtfsLinks.IsJunction(fx.Install(SptLayout.UserMods)));
+        Assert.True(File.Exists(fx.Install("dxgi.dll")));
+
+        var result = fx.Engine.DetachAll(fx.GameRoot, fx.ManagerData);
+        Assert.Equal(DeployStatus.Success, result.Status);
+        Assert.False(NtfsLinks.IsJunction(fx.Install("BepInEx/plugins/Talk")));
+        Assert.False(Directory.Exists(fx.Install("BepInEx/plugins/Talk")));
+        Assert.False(NtfsLinks.IsJunction(fx.Install(SptLayout.UserMods)));
+        Assert.False(File.Exists(fx.Install("dxgi.dll")));
+        Assert.True(Directory.Exists(fx.Install(SptLayout.UserMods)));
+        Assert.True(Directory.Exists(fx.Install(SptLayout.UserPatchers)));
+        Assert.True(Directory.Exists(fx.Install(SptLayout.UserProfiles)));
+        Assert.True(Directory.Exists(fx.Install(SptLayout.BepInExConfig)));
+        Assert.False(NtfsLinks.IsJunction(fx.Install(SptLayout.BepInExConfig)));
+        Assert.True(File.Exists(fx.Install(SptLayout.EscapeFromTarkovExe)));
+        Assert.Equal("spt-core", File.ReadAllText(fx.Install(SptLayout.BepInExPluginsSpt + "/spt-core.dll")));
+        Assert.NotNull(ModStore.TryRead(fx.ManagerData, "Talk", "1.0"));
+        Assert.True(File.Exists(ProfilePaths.Manifest(fx.ManagerData, ProfilePaths.DefaultProfileId)));
+
+        var again = fx.Engine.DetachAll(fx.GameRoot, fx.ManagerData);
+        Assert.Equal(DeployStatus.Success, again.Status);
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request()).Status);
+        Assert.True(NtfsLinks.IsJunction(fx.Install("BepInEx/plugins/Talk")));
+    }
+
+    [Fact]
+    public void DetachAll_FindsJunctionsWithoutManifest()
+    {
+        using var fx = new DeployFixture();
+        fx.PutMod("Talk", "1.0", new Dictionary<string, string>
+        {
+            ["BepInEx/plugins/Talk/talk.dll"] = "client",
+            ["dxgi.dll"] = "reshade"
+        });
+        Assert.Equal(DeployStatus.Success, fx.Engine.Deploy(fx.Request()).Status);
+        File.Delete(ProfilePaths.Manifest(fx.ManagerData, ProfilePaths.DefaultProfileId));
+
+        var result = fx.Engine.DetachAll(fx.GameRoot, fx.ManagerData);
+        Assert.Equal(DeployStatus.Success, result.Status);
+        Assert.False(NtfsLinks.IsJunction(fx.Install("BepInEx/plugins/Talk")));
+        Assert.False(Directory.Exists(fx.Install("BepInEx/plugins/Talk")));
+    }
+
+    [Fact]
+    public void DetachAll_BlockedWhileSptRunning()
+    {
+        using var fx = new DeployFixture();
+        fx.Lock.Running.Add("SPT.Server");
+        var result = fx.Engine.DetachAll(fx.GameRoot, fx.ManagerData);
+        Assert.Equal(DeployStatus.BlockedProcesses, result.Status);
+        Assert.Contains("SPT.Server", result.Message);
+    }
 }
 
 internal sealed class StubProcessLock : IProcessLock

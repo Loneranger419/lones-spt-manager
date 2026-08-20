@@ -13,6 +13,11 @@ public enum AppTheme
 public sealed class AppSettingsDocument
 {
     public string Theme { get; init; } = "windows";
+
+    /// <summary>
+    /// Null when the key is missing from an older settings file. Treat as on.
+    /// </summary>
+    public bool? UndeployOnExit { get; init; }
 }
 
 public static class AppSettings
@@ -29,37 +34,61 @@ public static class AppSettings
     public static string FilePath(string managerData)
         => Path.Combine(managerData, FileName);
 
-    public static AppTheme LoadTheme(string managerData)
+    public static AppSettingsDocument Load(string managerData)
     {
         if (string.IsNullOrWhiteSpace(managerData))
         {
-            return AppTheme.Windows;
+            return new AppSettingsDocument();
         }
 
         var path = FilePath(managerData);
         if (!File.Exists(path))
         {
-            return AppTheme.Windows;
+            return new AppSettingsDocument();
         }
 
         try
         {
-            var document = JsonSerializer.Deserialize<AppSettingsDocument>(File.ReadAllText(path), JsonOptions);
-            return ParseTheme(document?.Theme);
+            return JsonSerializer.Deserialize<AppSettingsDocument>(File.ReadAllText(path), JsonOptions)
+                   ?? new AppSettingsDocument();
         }
         catch (Exception)
         {
-            return AppTheme.Windows;
+            return new AppSettingsDocument();
         }
     }
 
-    public static void SaveTheme(string managerData, AppTheme theme)
+    public static void Save(string managerData, AppSettingsDocument document)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(managerData);
         Directory.CreateDirectory(managerData);
-        File.WriteAllText(
-            FilePath(managerData),
-            JsonSerializer.Serialize(new AppSettingsDocument { Theme = FormatTheme(theme) }, JsonOptions));
+        File.WriteAllText(FilePath(managerData), JsonSerializer.Serialize(document, JsonOptions));
+    }
+
+    public static AppTheme LoadTheme(string managerData)
+        => ParseTheme(Load(managerData).Theme);
+
+    public static void SaveTheme(string managerData, AppTheme theme)
+    {
+        var current = Load(managerData);
+        Save(managerData, new AppSettingsDocument
+        {
+            Theme = FormatTheme(theme),
+            UndeployOnExit = current.UndeployOnExit
+        });
+    }
+
+    public static bool LoadUndeployOnExit(string managerData)
+        => Load(managerData).UndeployOnExit != false;
+
+    public static void SaveUndeployOnExit(string managerData, bool undeployOnExit)
+    {
+        var current = Load(managerData);
+        Save(managerData, new AppSettingsDocument
+        {
+            Theme = current.Theme,
+            UndeployOnExit = undeployOnExit
+        });
     }
 
     public static AppTheme ParseTheme(string? value)

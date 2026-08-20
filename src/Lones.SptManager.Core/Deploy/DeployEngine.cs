@@ -278,6 +278,15 @@ public sealed class DeployEngine
             var stagingRoot = ProfilePaths.Staging(managerData, profileId);
             var journal = TryReadManifest(ProfilePaths.Journal(managerData, profileId));
             var last = TryReadManifest(ProfilePaths.Manifest(managerData, profileId));
+            try
+            {
+                ReshadeState.CaptureToProfile(gameRoot, managerData, profileId);
+            }
+            catch (Exception)
+            {
+                // Capture must not block Un-Deploy.
+            }
+
             PurgeOwned(managerData, profileId, gameRoot, stagingRoot, journal, last);
         }
 
@@ -292,7 +301,7 @@ public sealed class DeployEngine
         return new DeployResult
         {
             Status = DeployStatus.Success,
-            Message = "Removed manager junctions from the SPT install."
+            Message = "Removed manager junctions from the SPT install. Store and profiles are unchanged."
         };
     }
 
@@ -534,7 +543,9 @@ public sealed class DeployEngine
                 return;
             }
 
-            if (SafeFileSystem.IsUnderDirectory(target, stagingRoot)
+            if (SafeFileSystem.IsUnderDirectory(target, managerData)
+                || SafeFileSystem.SamePath(target, managerData)
+                || SafeFileSystem.IsUnderDirectory(target, stagingRoot)
                 || SafeFileSystem.SamePath(target, stagingRoot)
                 || SafeFileSystem.IsUnderDirectory(target, profilesRoot)
                 || SafeFileSystem.SamePath(target, profilesRoot))
@@ -547,16 +558,24 @@ public sealed class DeployEngine
         Consider(GamePath.Combine(gameRoot, SptLayout.UserPatchers));
         Consider(GamePath.Combine(gameRoot, SptLayout.UserProfiles));
         Consider(GamePath.Combine(gameRoot, SptLayout.BepInExConfig));
-        var plugins = GamePath.Combine(gameRoot, OverlayPlanner.BepInExPlugins);
-        if (Directory.Exists(plugins))
+        ConsiderChildren(GamePath.Combine(gameRoot, SptLayout.UserMods));
+        ConsiderChildren(GamePath.Combine(gameRoot, SptLayout.UserPatchers));
+        ConsiderChildren(GamePath.Combine(gameRoot, OverlayPlanner.BepInExPlugins));
+
+        return found;
+
+        void ConsiderChildren(string parent)
         {
-            foreach (var child in Directory.EnumerateDirectories(plugins))
+            if (!Directory.Exists(parent) || NtfsLinks.IsJunction(parent))
+            {
+                return;
+            }
+
+            foreach (var child in Directory.EnumerateDirectories(parent))
             {
                 Consider(child);
             }
         }
-
-        return found;
     }
 
     private static bool IsProtectedInstallPath(string gameRoot, string fullPath)

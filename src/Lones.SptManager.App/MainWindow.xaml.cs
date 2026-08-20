@@ -18,6 +18,13 @@ public partial class MainWindow : System.Windows.Window
         var viewModel = new MainViewModel();
         DataContext = viewModel;
         Loaded += (_, _) => viewModel.RepairOnStart();
+        Closing += (_, e) =>
+        {
+            if (DataContext is MainViewModel closing && !closing.TryUndeployOnExit())
+            {
+                e.Cancel = true;
+            }
+        };
     }
 
     private void ModList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)

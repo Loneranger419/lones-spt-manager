@@ -62,6 +62,8 @@ public static class ManagerPurge
         };
     }
 
+    private static readonly string[] ManagerChildren = ["store", "profiles", "instances", "cache"];
+
     private static void WipeManagerData(string managerData)
     {
         if (!Directory.Exists(managerData))
@@ -69,7 +71,7 @@ public static class ManagerPurge
             return;
         }
 
-        foreach (var name in new[] { "store", "profiles", "instances", "cache" })
+        foreach (var name in ManagerChildren)
         {
             var child = Path.Combine(managerData, name);
             if (Directory.Exists(child) || NtfsLinks.IsJunction(child))
@@ -78,7 +80,60 @@ public static class ManagerPurge
             }
         }
 
-        SafeFileSystem.DeleteDirectoryNoFollow(managerData);
+        var keep = KeepNames(managerData);
+        foreach (var entry in Directory.EnumerateFileSystemEntries(managerData).ToArray())
+        {
+            if (keep.Contains(Path.GetFileName(entry)))
+            {
+                continue;
+            }
+
+            if (Directory.Exists(entry) || NtfsLinks.IsJunction(entry))
+            {
+                SafeFileSystem.DeleteDirectoryNoFollow(entry);
+            }
+            else
+            {
+                File.SetAttributes(entry, FileAttributes.Normal);
+                File.Delete(entry);
+            }
+        }
+
+        if (keep.Count == 0)
+        {
+            SafeFileSystem.DeleteDirectoryNoFollow(managerData);
+        }
+    }
+
+    /// <summary>
+    /// The release zip (and a self-update) can live in the same folder as manager data.
+    /// Never delete those files; deleting the running exe also fails the rest of the wipe.
+    /// </summary>
+    internal static bool IsInstallFile(string fileName)
+        => fileName.Equals(ProductInfo.ExeFileName, StringComparison.OrdinalIgnoreCase)
+           || fileName.Equals("mods.json.example", StringComparison.OrdinalIgnoreCase);
+
+    private static HashSet<string> KeepNames(string managerData)
+    {
+        var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in Directory.EnumerateFiles(managerData))
+        {
+            var name = Path.GetFileName(entry);
+            if (IsInstallFile(name))
+            {
+                keep.Add(name);
+            }
+        }
+
+        var processPath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(processPath)
+            && File.Exists(processPath)
+            && SafeFileSystem.SamePath(Path.GetDirectoryName(processPath)!, managerData))
+        {
+            keep.Add(Path.GetFileName(processPath));
+        }
+
+        return keep;
     }
 
     internal static string? Validate(string managerData, string? gameRoot)

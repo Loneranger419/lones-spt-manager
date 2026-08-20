@@ -51,6 +51,14 @@
                        Text="Removes this app’s store, profiles, and cache. Does not delete the SPT install. Bind again afterward." />
 
             <TextBlock Text="Install" FontWeight="SemiBold" Margin="0,0,0,8" />
+            <CheckBox x:Name="UndeployOnExitBox"
+                      Content="Remove junctions when the app closes"
+                      Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap"
+                       Margin="0,0,0,12"
+                       FontSize="11"
+                       Foreground="{DynamicResource MutedBrush}"
+                       Text="Leaves the SPT folder vanilla when you quit this app. Store and profiles stay. Deploy or launch to put mods back. Uncheck to leave junctions on the install." />
             <Button Content="Repair"
                     Height="30"
                     HorizontalAlignment="Left"

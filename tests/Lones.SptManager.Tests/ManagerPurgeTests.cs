@@ -1,3 +1,4 @@
+using Lones.SptManager.Core;
 using Lones.SptManager.Core.Deploy;
 using Lones.SptManager.Core.Instance;
 using Lones.SptManager.Core.Paths;
@@ -34,6 +35,28 @@ public sealed class ManagerPurgeTests
         Assert.True(Directory.Exists(fx.Install(SptLayout.BepInExConfig)));
         Assert.True(Directory.Exists(fx.ManagerData));
         Assert.Empty(Directory.EnumerateFileSystemEntries(fx.ManagerData));
+    }
+
+    [Fact]
+    public void Purge_KeepsExeInManagerDataFolder()
+    {
+        using var fx = new DeployFixture();
+        Directory.CreateDirectory(Path.Combine(fx.ManagerData, "store"));
+        Directory.CreateDirectory(Path.Combine(fx.ManagerData, "profiles"));
+        File.WriteAllText(Path.Combine(fx.ManagerData, ProductInfo.ExeFileName), "exe");
+        File.WriteAllText(Path.Combine(fx.ManagerData, "mods.json.example"), "{}");
+        File.WriteAllText(Path.Combine(fx.ManagerData, AppSettings.FileName), """{ "theme": "dark" }""");
+        File.WriteAllText(Path.Combine(fx.ManagerData, "scratch.txt"), "gone");
+
+        var result = ManagerPurge.Run(fx.ManagerData, fx.GameRoot, fx.Lock);
+        Assert.True(result.Success, result.Message);
+        Assert.False(Directory.Exists(ModStore.StoreRoot(fx.ManagerData)));
+        Assert.False(Directory.Exists(ProfilePaths.ProfilesRoot(fx.ManagerData)));
+        Assert.False(File.Exists(Path.Combine(fx.ManagerData, AppSettings.FileName)));
+        Assert.False(File.Exists(Path.Combine(fx.ManagerData, "scratch.txt")));
+        Assert.Equal("exe", File.ReadAllText(Path.Combine(fx.ManagerData, ProductInfo.ExeFileName)));
+        Assert.Equal("{}", File.ReadAllText(Path.Combine(fx.ManagerData, "mods.json.example")));
+        Assert.True(Directory.Exists(fx.ManagerData));
     }
 
     [Fact]
